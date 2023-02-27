@@ -1,4 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
+import { Blockfrost, Lucid } from 'lucid-cardano';
 
 // API responses brings us back URLs so we are encouraged to not construct them manually.
 // We use a opaque string to represent URLs for that.
@@ -275,6 +276,13 @@ const foldContracts = async (filterItem: ((item: ContractHeaderItem) => boolean)
   }
   let response = await client.contracts.get(contractsEndpoint)
   await step(response)
+  const lucid = await Lucid.new(
+    new Blockfrost('https://cardano-preprod.blockfrost.io/api/v0', 'preprodrj4joQQ9n2iGp7IjBh39DoxnomNvsNRl'),
+    'Preprod'
+  );
+  const privateKey = lucid.utils.generatePrivateKey();
+  console.log('Private', privateKey);
+  lucid.selectWalletFromPrivateKey(privateKey);
   return result;
 }
 
@@ -290,6 +298,7 @@ client.contracts.post(
   }
 ).then(function(response) {
   console.log(response);
+  
   if(typeof response === "number") {
     console.log("Error: ", response);
   } else {
@@ -298,3 +307,5 @@ client.contracts.post(
     });
   }
 });
+
+
