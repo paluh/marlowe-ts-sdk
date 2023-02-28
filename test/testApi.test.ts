@@ -10,7 +10,7 @@
 import * as A from 'fp-ts/Array';
 import * as ACL from '../src/client/internal/anticorruptionlayer';
 import * as M from 'fp-ts/Map';
-import { Blockfrost, Lucid } from 'lucid-cardano';
+import { Blockfrost, Lucid, C } from 'lucid-cardano';
 import { ContractHeader } from '../src/client/model/contract/header';
 // import { DSL, Examples } from '@cardano-sdk/dsl';
 import { ErrorResponse, GetContractsResponse, contractsEndpoint } from '../src/client/internal/restAPI';
@@ -19,9 +19,11 @@ import { Internal } from '../src/client/';
 import { matchI } from 'ts-adt';
 import { pipe } from 'fp-ts/function';
 import axios from 'axios';
+import * as ADA from '../src/common/ada'
+import { e2eAPI} from '../src/common/blockfrost'
 
 describe('@marlowe-runtime-client',  () => {
-  const baseUrl = 'http://0.0.0.0:32776';
+  const baseUrl = 'http://0.0.0.0:32777';
   
 
   // describe('@marlowe-dsl-examples', () => {
@@ -34,16 +36,20 @@ describe('@marlowe-runtime-client',  () => {
   // });
   describe('Contract Headers', () => {
     it('can all be fetched', async () => {
-      const lucid = await Lucid.new(
-        new Blockfrost('https://cardano-preprod.blockfrost.io/api/v0', 'preprodrj4joQQ9n2iGp7IjBh39DoxnomNvsNRl'),
-        'Preprod'
-      );
-      const privateKey = lucid.utils.generatePrivateKey();
-      console.log('Private', privateKey);
-      lucid.selectWalletFromPrivateKey(privateKey);
-      const marloweRuntime = MarloweRuntimeClient(baseUrl);
-      const headers = await marloweRuntime.contract.header.all();
-      expect(headers.length).toBeGreaterThan(0);
+      
+      const api = await e2eAPI.Init
+        ('preprodrj4joQQ9n2iGp7IjBh39DoxnomNvsNRl'
+        ,'https://cardano-preprod.blockfrost.io/api/v0'
+        ,'Preprod'
+        ,'5820e09f58cd4b2793ff35281c36af06760d4ab993829c7a1d3b29db2947576339b1');
+       
+      api.bankADATreasuryAmount().then (([address, adaAmount]) => {
+        console.log('Bank public key: ', address);
+        console.log('Money in the Bank :', ADA.format(adaAmount));
+        expect(adaAmount).toBeGreaterThan(100_000_000)
+      });
+      
+      
     }, 30_000); // too slow
     it('can be filtered (e.g : filtering not empty metadata)', async () => {
       const marloweRuntime = MarloweRuntimeClient(baseUrl);

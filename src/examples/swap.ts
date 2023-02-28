@@ -29,32 +29,26 @@ but we get a shorter contract if we set it to false */
 const explicitRefunds: Boolean = false;
 
 const lovelacePerAda: Value = Constant(1_000_000n);
-const amountOfAda: Value = ConstantParam('Amount of Ada');
-const amountOfLovelace: Value = MulValue(lovelacePerAda, amountOfAda);
-const amountOfDollars: Value = ConstantParam('Amount of dollars');
+const amountOfLovelace = ( amountOfAda: Value): Value => MulValue(lovelacePerAda, amountOfAda);
 
-const adaDepositTimeout: Timeout = TimeParam('Timeout for Ada deposit');
-const dollarDepositTimeout: Timeout = TimeParam('Timeout for dollar deposit');
 
-const dollars: Token = Token('85bb65', 'dollar');
-
-type SwapParty = {
+interface SwapParty {
   party: Party;
   currency: Token;
   amount: Value;
 };
 
-const adaProvider: SwapParty = {
+const adaProvider = ( amountOfAda: Value): SwapParty => ({
   party: Role('Ada provider'),
   currency: ada,
-  amount: amountOfLovelace
-};
+  amount: amountOfLovelace (amountOfAda)
+});
 
-const dollarProvider: SwapParty = {
-  party: Role('Dollar provider'),
-  currency: dollars,
-  amount: amountOfDollars
-};
+const tokenProvider = (amount:Value ,currency : Token) : SwapParty => ({
+  party: Role('Token provider'),
+  currency: currency,
+  amount: amount
+});
 
 const makeDeposit = function (
   src: SwapParty,
@@ -80,14 +74,14 @@ const makePayment = function (src: SwapParty, dest: SwapParty, continuation: Con
   return Pay(src.party, Party(dest.party), src.currency, src.amount, continuation);
 };
 
-export const swap: Contract = makeDeposit(
+export const swap = (adaDepositTimeout:Timeout, tokenDepositTimeout:Timeout,amount:Value,token:Token): Contract => makeDeposit(
   adaProvider,
   adaDepositTimeout,
   Close,
   makeDeposit(
-    dollarProvider,
-    dollarDepositTimeout,
+    tokenProvider(amount,token),
+    tokenDepositTimeout,
     refundSwapParty(adaProvider),
-    makePayment(adaProvider, dollarProvider, makePayment(dollarProvider, adaProvider, Close))
+    makePayment(adaProvider, tokenProvider(amount,token), makePayment(tokenProvider(amount,token), adaProvider, Close))
   )
 );
