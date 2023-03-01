@@ -1,69 +1,67 @@
-import { components } from '@blockfrost/openapi';
 import { pipe } from 'fp-ts/function';
 import * as A from 'fp-ts/Array';
 import * as API from '@blockfrost/blockfrost-js'
-import { Blockfrost, Lucid, C, Network } from 'lucid-cardano';
+import { Blockfrost, Lucid, C, Network, PrivateKey } from 'lucid-cardano';
 
-
-type AddressContent = components ['schemas']['address_content']
 export type Address = string;
 
-export class e2eAPI {
-    private projectId:string;
-    private network:Network;
-    private blockfrostUrl:string
-    private blockfrostApi: API.BlockFrostAPI;
-    private bankLucid : Lucid;
-    private bankPrivateKeyBech32: string;
-      
-    private constructor 
-        ( projectId: string
-        , blockfrostUrl:string
-        , network:Network
-        , bankPrivateKeyHex: string) {
-        this.blockfrostUrl = blockfrostUrl;
+export class Configuration {
+    projectId:string;
+    network:Network;
+    blockfrostUrl:string
+
+    public constructor (projectId:string, blockfrostUrl:string,network:Network, ) {
         this.projectId = projectId;
         this.network = network;
-        this.bankPrivateKeyBech32 = C.PrivateKey.from_bytes(Buffer.from(bankPrivateKeyHex, 'hex')).to_bech32();
-        this.blockfrostApi = new API.BlockFrostAPI({projectId: projectId});
+        this.blockfrostUrl = blockfrostUrl;
     }
+}
 
-    private async init () {
-       this.bankLucid = await Lucid.new(new Blockfrost(this.blockfrostUrl, this.projectId),this.network);
-       this.bankLucid.selectWalletFromPrivateKey(this.bankPrivateKeyBech32);
-    }
-    public static async Init 
-        ( projectId: string
-        , blockfrostUrl:string
-        , network:Network
-        , bankPrivateKeyHex: string) {
-        const e2eApi = new e2eAPI(projectId,blockfrostUrl,network,bankPrivateKeyHex);
-        await e2eApi.init();
-        return e2eApi;
-    }
+export const getPrivateKeyFromHexString = (privateKeyHex:string) : PrivateKey => C.PrivateKey.from_bytes(Buffer.from(privateKeyHex, 'hex')).to_bech32()
 
-    public async bankAddress () {
-        const address = await this.bankLucid.wallet.address ();
-        return address;
-    }
-
-    bankADATreasuryAmount = async (): Promise<[Address,Number]> => 
-        this.bankAddress().then(async (address) => {
-            const content : AddressContent = await this.blockfrostApi.addresses(address); 
-            return [ address
-                   , Number(pipe(content.amount,A.filter((amount) => amount.unit === "lovelace"),A.map((amount) => amount.quantity))[0])
-                   ];
-        });
+export class SingleAddressAccount {
+    private privateKeyBech32: string;
+    private configuration:Configuration;
+    private lucid : Lucid;
+    private blockfrostApi: API.BlockFrostAPI;
     
-    public createAccountWith(ada:Number) {
-        return 
-    }     
-} 
-
-class Account {
-    private bankPrivateKeyBech32: string;
+    public address : Address;
     
-    constructor () {}
+    private constructor (privateKeyBech32:PrivateKey) {
+        this.privateKeyBech32 = privateKeyBech32;
+    }
+
+    public static async Initialise ( configuration:Configuration, privateKeyBech32: string) {
+        const account = new SingleAddressAccount(privateKeyBech32);
+        account.configuration = configuration;
+        account.blockfrostApi = new API.BlockFrostAPI({projectId: configuration.projectId}); 
+        await account.initialise();
+        return account;
+    }
+
+    public static async Random ( configuration:Configuration) {
+        const privateKey = C.PrivateKey.generate_ed25519().to_bech32();
+        const account = new SingleAddressAccount(privateKey);
+        account.configuration = configuration; 
+        await account.initialise();
+        return account;
+    }
+
+    private async initialise () {
+        this.lucid = await Lucid.new(new Blockfrost(this.configuration.blockfrostUrl, this.configuration.projectId),this.configuration.network);
+        this.lucid.selectWalletFromPrivateKey(this.privateKeyBech32);
+        this.address = await this.lucid.wallet.address ();
+     }
+    
+    ADABalance = async (): Promise<Number> => 
+        this.blockfrostApi.addresses(this.address).then((content) =>  
+            Number(pipe( content.amount
+                       , A.filter((amount) => amount.unit === "lovelace"),A.map((amount) => amount.quantity))[0]))
+               
+
+    public provision(account: SingleAddressAccount, ada: Number) : Promise<Number> {
+        console.log ('Provisioning:',account.address); 
+        return Promise.resolve(ada)}
 }
 
 

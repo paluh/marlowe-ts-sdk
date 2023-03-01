@@ -3,14 +3,12 @@ import {
   Case,
   Close,
   Constant,
-  ConstantParam,
   Contract,
   Deposit,
   MulValue,
   Party,
   Pay,
   Role,
-  TimeParam,
   Timeout,
   Token,
   Value,
@@ -38,16 +36,16 @@ interface SwapParty {
   amount: Value;
 };
 
-const adaProvider = ( amountOfAda: Value): SwapParty => ({
+const adaSwapProvider = ( amountOfAda: Value): SwapParty => ({
   party: Role('Ada provider'),
   currency: ada,
   amount: amountOfLovelace (amountOfAda)
 });
 
-const tokenProvider = (amount:Value ,currency : Token) : SwapParty => ({
+const tokenSwapProvider = (amountofToken:Value ,token : Token) : SwapParty => ({
   party: Role('Token provider'),
-  currency: currency,
-  amount: amount
+  currency: token,
+  amount: amountofToken
 });
 
 const makeDeposit = function (
@@ -74,14 +72,17 @@ const makePayment = function (src: SwapParty, dest: SwapParty, continuation: Con
   return Pay(src.party, Party(dest.party), src.currency, src.amount, continuation);
 };
 
-export const swap = (adaDepositTimeout:Timeout, tokenDepositTimeout:Timeout,amount:Value,token:Token): Contract => makeDeposit(
-  adaProvider,
-  adaDepositTimeout,
-  Close,
-  makeDeposit(
-    tokenProvider(amount,token),
-    tokenDepositTimeout,
-    refundSwapParty(adaProvider),
-    makePayment(adaProvider, tokenProvider(amount,token), makePayment(tokenProvider(amount,token), adaProvider, Close))
-  )
-);
+export const swap = function (adaDepositTimeout:Timeout, tokenDepositTimeout:Timeout,amountOfADA:Value,amountOfToken:Value,token:Token): Contract { 
+  const adaProvider = adaSwapProvider(amountOfADA);
+  const tokenProvider = tokenSwapProvider(amountOfToken,token);
+  return makeDeposit(
+            adaProvider,
+            adaDepositTimeout,
+            Close,
+            makeDeposit(
+              tokenProvider,
+              tokenDepositTimeout,
+              refundSwapParty(adaProvider),
+              makePayment(adaProvider, tokenProvider, makePayment(tokenProvider, adaProvider, Close))
+            ));
+  };
