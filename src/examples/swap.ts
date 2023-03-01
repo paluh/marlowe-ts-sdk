@@ -22,6 +22,21 @@ import {
  *      Takes Ada from one party and dollar tokens from another party, and it swaps them atomically.
  */
 
+export const swap = function (adaDepositTimeout:Timeout, tokenDepositTimeout:Timeout,amountOfADA:Value,amountOfToken:Value,token:Token): Contract { 
+  const adaProvider = adaSwapProvider(amountOfADA);
+  const tokenProvider = tokenSwapProvider(amountOfToken,token);
+  return makeDeposit(
+            adaProvider,
+            adaDepositTimeout,
+            Close,
+            makeDeposit(
+              tokenProvider,
+              tokenDepositTimeout,
+              refundSwapParty(adaProvider),
+              makePayment(adaProvider, tokenProvider, makePayment(tokenProvider, adaProvider, Close))
+            ));
+  };
+
 /* We can set explicitRefunds true to run Close refund analysis
 but we get a shorter contract if we set it to false */
 const explicitRefunds: Boolean = false;
@@ -72,17 +87,3 @@ const makePayment = function (src: SwapParty, dest: SwapParty, continuation: Con
   return Pay(src.party, Party(dest.party), src.currency, src.amount, continuation);
 };
 
-export const swap = function (adaDepositTimeout:Timeout, tokenDepositTimeout:Timeout,amountOfADA:Value,amountOfToken:Value,token:Token): Contract { 
-  const adaProvider = adaSwapProvider(amountOfADA);
-  const tokenProvider = tokenSwapProvider(amountOfToken,token);
-  return makeDeposit(
-            adaProvider,
-            adaDepositTimeout,
-            Close,
-            makeDeposit(
-              tokenProvider,
-              tokenDepositTimeout,
-              refundSwapParty(adaProvider),
-              makePayment(adaProvider, tokenProvider, makePayment(tokenProvider, adaProvider, Close))
-            ));
-  };

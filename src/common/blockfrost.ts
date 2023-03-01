@@ -1,8 +1,22 @@
 import { pipe } from 'fp-ts/function';
 import * as A from 'fp-ts/Array';
 import * as API from '@blockfrost/blockfrost-js'
-import { Blockfrost, Lucid, C, Network, PrivateKey } from 'lucid-cardano';
+import { Blockfrost, Lucid, C, Network, PrivateKey, PolicyId, getAddressDetails, toUnit, fromText } from 'lucid-cardano';
+import * as O from 'fp-ts/Option'
+import { matchI } from 'ts-adt';
+import getUnixTime from 'date-fns/getUnixTime';
+import { addDays, addHours,addMinutes, addSeconds } from 'date-fns/fp'
 
+
+export class Token {
+    policyId:string;
+    tokenName:string;
+
+    public constructor(policyId:string,tokenName:string){
+        this.policyId  = policyId;
+        this.tokenName = tokenName;
+    }
+}
 export type Address = string;
 
 export class Configuration {
@@ -27,22 +41,21 @@ export class SingleAddressAccount {
     
     public address : Address;
     
-    private constructor (privateKeyBech32:PrivateKey) {
+    private constructor (configuration:Configuration,privateKeyBech32:PrivateKey) {
         this.privateKeyBech32 = privateKeyBech32;
+        this.configuration = configuration;
+        this.blockfrostApi = new API.BlockFrostAPI({projectId: configuration.projectId}); 
     }
 
     public static async Initialise ( configuration:Configuration, privateKeyBech32: string) {
-        const account = new SingleAddressAccount(privateKeyBech32);
-        account.configuration = configuration;
-        account.blockfrostApi = new API.BlockFrostAPI({projectId: configuration.projectId}); 
+        const account = new SingleAddressAccount(configuration,privateKeyBech32);
         await account.initialise();
         return account;
     }
 
     public static async Random ( configuration:Configuration) {
         const privateKey = C.PrivateKey.generate_ed25519().to_bech32();
-        const account = new SingleAddressAccount(privateKey);
-        account.configuration = configuration; 
+        const account = new SingleAddressAccount(configuration,privateKey);
         await account.initialise();
         return account;
     }
@@ -53,16 +66,68 @@ export class SingleAddressAccount {
         this.address = await this.lucid.wallet.address ();
      }
     
-    ADABalance = async (): Promise<Number> => 
-        this.blockfrostApi.addresses(this.address).then((content) =>  
-            Number(pipe( content.amount
-                       , A.filter((amount) => amount.unit === "lovelace"),A.map((amount) => amount.quantity))[0]))
-               
+    public async adaBalance () { 
+        const content = await this.blockfrostApi.addresses(this.address);
+        return pipe( content.amount??[]
+            , A.filter((amount) => amount.unit === "lovelace")
+            , A.map((amount) => Number(amount.quantity))
+            , A.head
+            , O.getOrElse(() => 0));
+                     
+    }
+    
+    public async tokenBalance (token:Token) { 
+        const content = await this.blockfrostApi.addresses(this.address);
+        const unit = toUnit(token.policyId, fromText(token.tokenName))
+        return pipe( content.amount??[]
+            , A.filter((amount) => amount.unit === unit)
+            , A.map((amount) => Number(amount.quantity))
+            , A.head
+            , O.getOrElse(() => 0));
+                     
+    }
 
-    public provision(account: SingleAddressAccount, ada: Number) : Promise<Number> {
+    public async provision(account: SingleAddressAccount, lovelaces: bigint) : Promise<Boolean> {
         console.log ('Provisioning:',account.address); 
-        return Promise.resolve(ada)}
+        const tx = await this.lucid.newTx()
+                    .payToAddress(account.address, { lovelace:lovelaces})
+                    .complete();
+
+        const signedTx = await tx.sign().complete();
+        const txHash = await signedTx.submit();
+        console.log(`transaction ${txHash} submitted.`);
+        return this.lucid.awaitTx(txHash);
+    }
+    
+    public async mintTokens(tokenName:string, amount: bigint) : Promise<Token> {
+        const { paymentCredential } = getAddressDetails(this.address);
+        const before = this. lucid.utils.unixTimeToSlot(pipe(Date.now(),addMinutes(5),getUnixTime))
+        const validTo = this. lucid.utils.unixTimeToSlot(pipe(Date.now(),addSeconds(5),getUnixTime))
+        const mintingPolicy = this.lucid.utils.nativeScriptFromJson({
+            type: "all",
+            scripts: [
+              {
+                type: "before",
+                slot:before,
+              },
+              { type: "sig", keyHash: paymentCredential?.hash! }
+            ],
+          });
+        
+        const policyId = this.lucid.utils.mintingPolicyToId(mintingPolicy);    
+        const tx = await this.lucid.newTx()
+                            .mintAssets({[toUnit(policyId, fromText(tokenName))]: amount})
+                            .validTo(validTo)
+                            .attachMintingPolicy(mintingPolicy)
+                            .complete();
+        const signedTx = await tx.sign().complete();
+        const txHash = await signedTx.submit();
+        console.log(`transaction ${txHash} submitted.`);
+        return this.lucid.awaitTx(txHash).then((result) => new Token(policyId,tokenName));
+    }
 }
+
+
 
 
 // const privateKey = lucid.utils.generatePrivateKey();

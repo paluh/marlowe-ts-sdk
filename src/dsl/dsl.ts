@@ -6,7 +6,7 @@ export type Party = { address: string } | { role_token: string };
 
 export type SomeNumber = number | string | bigint;
 
-const coerceNumber = function (n: SomeNumber): BigNumber {
+export const coerceNumber = function (n: SomeNumber): BigNumber {
   const isNumeric = /^-?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i;
   if (typeof n === 'string' && isNumeric.test(String(n))) {
     return new BigNumber(n);
