@@ -1,23 +1,9 @@
 {
+  "extends": "./tsconfig-base.json",
   "compilerOptions": {
     "composite": true,
-    "module": "esnext",
+    "module": "es2020",
     "outDir": "dist/mjs",
-    "target": "esnext",
-    "esModuleInterop": true,
-    "moduleResolution": "node",
-    "declaration": true,
-    "declarationMap": true,
-    "noEmitOnError": true,
-    "noUnusedParameters": true,
-    "noUnusedLocals": true,
-    "removeComments": true,
-    "preserveConstEnums": true,
-    "sourceMap": true,
-    "strict": true,
-    "strictPropertyInitialization": false,
-    "emitDecoratorMetadata": true,
-    "experimentalDecorators": true,
-    "skipLibCheck": true
+    "target": "es2020",
   }
 }
