@@ -1,12 +1,12 @@
 import { pipe } from 'fp-ts/function';
 import * as A from 'fp-ts/Array';
 import * as API from '@blockfrost/blockfrost-js'
-import { Blockfrost, Lucid, C, Network, PrivateKey, PolicyId, getAddressDetails, toUnit, fromText } from 'lucid-cardano';
+import { Blockfrost, Lucid, C, Network, PrivateKey, PolicyId, getAddressDetails, toUnit, fromText, NativeScript } from 'lucid-cardano';
 import * as O from 'fp-ts/Option'
 import { matchI } from 'ts-adt';
 import getUnixTime from 'date-fns/getUnixTime';
 import { addDays, addHours,addMinutes, addSeconds } from 'date-fns/fp'
-
+import { log } from './logging'
 
 export class Token {
     policyId:string;
@@ -70,59 +70,64 @@ export class SingleAddressAccount {
         const content = await this.blockfrostApi.addresses(this.address);
         return pipe( content.amount??[]
             , A.filter((amount) => amount.unit === "lovelace")
-            , A.map((amount) => Number(amount.quantity))
+            , A.map((amount) => BigInt(amount.quantity))
             , A.head
-            , O.getOrElse(() => 0));
+            , O.getOrElse(() => 0n));
                      
     }
     
     public async tokenBalance (token:Token) { 
         const content = await this.blockfrostApi.addresses(this.address);
-        const unit = toUnit(token.policyId, fromText(token.tokenName))
+        const unit = toUnit(token.policyId, fromText(token.tokenName));
+        log(`token ${unit}`)
+        log(`content ${JSON.stringify(content)}`)
         return pipe( content.amount??[]
             , A.filter((amount) => amount.unit === unit)
-            , A.map((amount) => Number(amount.quantity))
+            , A.map((amount) => BigInt(amount.quantity))
             , A.head
-            , O.getOrElse(() => 0));
+            , O.getOrElse(() => 0n));
                      
     }
 
-    public async provision(account: SingleAddressAccount, lovelaces: bigint) : Promise<Boolean> {
-        console.log ('Provisioning:',account.address); 
+    public async provision(account: SingleAddressAccount, lovelaces: BigInt) : Promise<Boolean> {
+        log (`Provisioning: ${account.address}`); 
         const tx = await this.lucid.newTx()
-                    .payToAddress(account.address, { lovelace:lovelaces})
+                    .payToAddress(account.address, { lovelace:lovelaces.valueOf()})
                     .complete();
 
         const signedTx = await tx.sign().complete();
         const txHash = await signedTx.submit();
-        console.log(`transaction ${txHash} submitted.`);
+        log(`Transaction ${txHash} submitted.`);
         return this.lucid.awaitTx(txHash);
     }
     
-    public async mintTokens(tokenName:string, amount: bigint) : Promise<Token> {
+    public async mintTokens(tokenName:string, amount: BigInt) : Promise<Token> {
         const { paymentCredential } = getAddressDetails(this.address);
-        const before = this. lucid.utils.unixTimeToSlot(pipe(Date.now(),addMinutes(5),getUnixTime))
-        const validTo = this. lucid.utils.unixTimeToSlot(pipe(Date.now(),addSeconds(5),getUnixTime))
-        const mintingPolicy = this.lucid.utils.nativeScriptFromJson({
-            type: "all",
-            scripts: [
-              {
-                type: "before",
-                slot:before,
-              },
-              { type: "sig", keyHash: paymentCredential?.hash! }
-            ],
-          });
-        
-        const policyId = this.lucid.utils.mintingPolicyToId(mintingPolicy);    
+        const before = this.lucid.currentSlot() + (5 * 60) 
+        log (`before : ${before}`)
+        const validTo = this.lucid.currentSlot() + 60
+        log (`current slot : ${validTo}`) 
+        const json : NativeScript = {
+                        type: "all",
+                        scripts: [
+                            {
+                                type: "before",
+                                slot: before.valueOf(),
+                            },
+                            { type: "sig", keyHash: paymentCredential?.hash! }
+                        ],
+                    };
+        log(JSON.stringify(json))
+        const mintingPolicy = this.lucid.utils.nativeScriptFromJson(json);
+        const policyId = this.lucid.utils.mintingPolicyToId(mintingPolicy);  
         const tx = await this.lucid.newTx()
-                            .mintAssets({[toUnit(policyId, fromText(tokenName))]: amount})
-                            .validTo(validTo)
+                            .mintAssets({[toUnit(policyId, fromText(tokenName))]: amount.valueOf()})
+                            .validTo(Date.now() + 100000)
                             .attachMintingPolicy(mintingPolicy)
-                            .complete();
+                            .complete();                   
         const signedTx = await tx.sign().complete();
         const txHash = await signedTx.submit();
-        console.log(`transaction ${txHash} submitted.`);
+        log(`Transaction ${txHash} submitted.`);
         return this.lucid.awaitTx(txHash).then((result) => new Token(policyId,tokenName));
     }
 }

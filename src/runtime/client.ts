@@ -1,28 +1,62 @@
 import * as A from 'fp-ts/Array';
 import * as ACL from './internal/anticorruptionlayer';
-import { ContractHeader } from './model/contract/header';
-// import { DSL, Examples } from '@cardano-sdk/dsl';
+import { contractHeaderMapper } from './internal/anticorruptionlayer';
 import { ErrorResponse, GetContractsResponse, contractsEndpoint } from './internal/restAPI';
-import { FetchResult } from './model/common';
+import { Address, FetchResult, RolesConfiguration,Collateral, Metadatum, ContractHeader } from './model/common';
 import * as Internal from './internal/restAPI';
 import { matchI } from 'ts-adt';
 import { pipe } from 'fp-ts/function';
 import axios from 'axios';
+import * as DSL from '../dsl';
+import * as In from './model/contract/header';
+import * as Out from './internal/restAPI';
 
 type FilterByContractHeader = (header: ContractHeader) => boolean;
 
-export interface MarloweRuntimeAPI {
-  contract: {
-    // txBuilder: {
-    //   creation: (input: PostContractsRequest) => Promise<PostContractsResponse | ErrorResponse>;
-    // };
-    header: {
-      filterBy: (predicate: FilterByContractHeader) => Promise<ContractHeader[]>;
-      all: () => Promise<ContractHeader[]>;
-    };
-  };
+export class ContractTxBuilder {
+  private restClient;
+
+  public constructor (baseURL: string) {
+    this.restClient = Internal.RestClient(
+      axios.create({
+        baseURL,
+        headers: { Accept: 'application/json', ContentType: 'application/json' }
+      })
+    );
+  }
+
+  public create 
+          ( contract : DSL.Contract
+          , roles: RolesConfiguration
+          , change: Address
+          , collateral?: Collateral
+          , usedAddresses?:Address[] ) {
+    const request 
+      = { contract: contract
+        , roles: roles
+        , version: 'v1'
+        , metadata: new Map<bigint, Metadatum>()
+        , minUTxODeposit: 1
+        , changeAddress: change
+        , addresses: usedAddresses
+        , collateralUTxOs: collateral
+    }
+    this.restClient.contracts.post(contractsEndpoint,request)
+  }
+
 }
-export const MarloweRuntimeClient = function (baseURL: string): MarloweRuntimeAPI {
+
+// contract: {
+//   txBuilder: {
+//     creation: (input: PostContractsRequest) => Promise<PostContractsResponse | ErrorResponse>;
+//   };
+//   header: {
+//     filterBy: (predicate: FilterByContractHeader) => Promise<ContractHeader[]>;
+//     all: () => Promise<ContractHeader[]>;
+//   };
+// };
+
+export const MarloweRuntimeClient = function (baseURL: string) {
   const restClient = Internal.RestClient(
     axios.create({
       baseURL,
@@ -35,7 +69,7 @@ export const MarloweRuntimeClient = function (baseURL: string): MarloweRuntimeAP
     const step = async function (result: FetchResult<ErrorResponse, GetContractsResponse>) {
       await matchI(result)({
         success: async ({ data }) => {
-          headers.push(...pipe(data.itemsWithinCurrentRange, A.map(ACL.convert), A.filter(predicate)));
+          headers.push(...pipe(data.itemsWithinCurrentRange, A.map(ACL.contractHeaderMapper.from), A.filter(predicate)));
           if (data.nextRange) {
             await step(await restClient.contracts.get(contractsEndpoint, data.nextRange));
           }

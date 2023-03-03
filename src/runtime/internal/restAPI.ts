@@ -1,8 +1,9 @@
 /* eslint-disable sort-keys-fix/sort-keys-fix */
 /* eslint-disable no-use-before-define */
 import { AxiosInstance } from 'axios';
+import { Address } from 'lucid-cardano';
 import { FetchResult, Metadata, failure, success } from '../model/common';
-
+import * as DSL from '../../dsl';
 // API responses brings us back URLs so we are encouraged to not construct them manually.
 // We use a opaque string to represent URLs for that.
 //
@@ -41,7 +42,6 @@ type Bech32 = string;
 type Version = 'v1';
 
 // Just a stub for Marlowe Contract and State
-type Contract = 'close';
 type State = any;
 type Input = 'input_notify';
 
@@ -78,8 +78,8 @@ export interface ContractHeader {
   blockHeader?: BlockHeader;
 }
 export interface ContractState extends ContractHeader {
-  initialContract: Contract;
-  currentContract?: Contract;
+  initialContract: DSL.Contract;
+  currentContract?: DSL.Contract;
   state?: State;
   utxo?: ContractId;
   txBody?: TextEnvelope;
@@ -102,15 +102,41 @@ interface PaginatedResponse<Item, Range> {
 export type GetContractsResponse = PaginatedResponse<ContractHeaderLinked, ContractsRange>;
 
 export interface PostContractsRequest {
-  contract: Contract;
-  roles?: any; // RolesConfig
-  version?: Version;
-  metadata?: Metadata;
+  contract: DSL.Contract;
+  roles?: RoleTokenConfig; 
+  version: Version;
+  metadata: Metadata;
   minUTxODeposit: number;
   changeAddress: Bech32;
   addresses?: Bech32[]; // When skipped we use `[changeAddress]`
   collateralUTxOs?: Bech32[];
 }
+
+
+
+export type RolesConfig 
+    = PolicyId // UsePolicyId
+    | Map<RoleName,RoleTokenConfig> //Mint
+    
+type RoleName = string;
+
+export type RoleTokenConfig
+  = Address // RoleTokenSimple
+  | { address : Address, metadata : TokenMetadata } // RoleTokenSimple
+
+export type TokenMetadata 
+  = { name : string
+    , image : string
+    , mediaType?: string
+    , description?:string
+    , files?:TokenMetadataFile[]
+  } 
+
+export type TokenMetadataFile 
+  = { name : string
+    , src : string
+    , mediaType : string
+    };
 
 export interface PostContractsResponse {
   contractId: TxOutRef;
