@@ -2,6 +2,7 @@ import * as In from '../model/common';
 import * as Out from './restAPI';
 import { Metadatum } from '../model/common';
 import deepEqual from 'deep-equal';
+import * as DSL from '../../dsl';
 
 export const contractHeaderMapper: Convertable<In.ContractHeader,Out.ContractHeaderLinked> = {
   from (out) {
@@ -16,19 +17,18 @@ export const contractHeaderMapper: Convertable<In.ContractHeader,Out.ContractHea
   }
 }
 
-export const postContractsRequestMapper: Convertable<[In.RolesConfiguration],Out.PostContractsRequest> = {
+export const rolesConfigurationMapper: Convertable<In.MintRoleTokenSimpleConfiguration,Out.RolesConfig> = {
   from (out) {
     throw new Error("Not Implemented");
   },
-  to (inObject) {
-    throw new Error("Not Implemented");
+  to (mintRoleTokenSimpleConfiguration) {
+    return mintRoleTokenSimpleConfiguration;
   }
-
 }
 
 export type Convertable<A,B> = {
   from(value: B): A;
-  to<A,B>(value: A): B;
+  to(value: A): B;
 };
 
 export function from(from: any): (a: Out.ContractHeaderLinked[]) => unknown[] {

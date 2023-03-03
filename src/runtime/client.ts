@@ -1,39 +1,39 @@
 import * as A from 'fp-ts/Array';
 import * as ACL from './internal/anticorruptionlayer';
-import { contractHeaderMapper } from './internal/anticorruptionlayer';
+import { contractHeaderMapper,rolesConfigurationMapper } from './internal/anticorruptionlayer';
 import { ErrorResponse, GetContractsResponse, contractsEndpoint } from './internal/restAPI';
-import { Address, FetchResult, RolesConfiguration,Collateral, Metadatum, ContractHeader } from './model/common';
+import { Address, FetchResult, MintRoleTokenSimpleConfiguration,Collateral, Metadatum, ContractHeader } from './model/common';
 import * as Internal from './internal/restAPI';
 import { matchI } from 'ts-adt';
 import { pipe } from 'fp-ts/function';
 import axios from 'axios';
 import * as DSL from '../dsl';
-import * as In from './model/contract/header';
-import * as Out from './internal/restAPI';
+import curlirize from 'axios-curlirize';
+
 
 type FilterByContractHeader = (header: ContractHeader) => boolean;
 
 export class ContractTxBuilder {
   private restClient;
-
+  
   public constructor (baseURL: string) {
-    this.restClient = Internal.RestClient(
-      axios.create({
-        baseURL,
-        headers: { Accept: 'application/json', ContentType: 'application/json' }
-      })
-    );
+    const instance = axios.create({
+      baseURL,
+      headers: { Accept: 'application/json', ContentType: 'application/json' }
+    });
+    curlirize(instance);
+    this.restClient = Internal.RestClient(instance);
   }
 
   public create 
           ( contract : DSL.Contract
-          , roles: RolesConfiguration
+          , roles: MintRoleTokenSimpleConfiguration
           , change: Address
-          , collateral?: Collateral
+          , collateral?: Collateral[]
           , usedAddresses?:Address[] ) {
-    const request 
+    const request : Internal.PostContractsRequest 
       = { contract: contract
-        , roles: roles
+        , roles: ACL.rolesConfigurationMapper.to(roles)
         , version: 'v1'
         , metadata: new Map<bigint, Metadatum>()
         , minUTxODeposit: 1
@@ -41,7 +41,7 @@ export class ContractTxBuilder {
         , addresses: usedAddresses
         , collateralUTxOs: collateral
     }
-    this.restClient.contracts.post(contractsEndpoint,request)
+    return this.restClient.contracts.post(contractsEndpoint,request);
   }
 
 }

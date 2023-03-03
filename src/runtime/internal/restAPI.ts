@@ -39,7 +39,7 @@ export const transactionEndpoint = (contractId: string, transactionId: string) =
 
 type Bech32 = string;
 
-type Version = 'v1';
+export type Version = 'v1';
 
 // Just a stub for Marlowe Contract and State
 type State = any;
@@ -103,7 +103,7 @@ export type GetContractsResponse = PaginatedResponse<ContractHeaderLinked, Contr
 
 export interface PostContractsRequest {
   contract: DSL.Contract;
-  roles?: RoleTokenConfig; 
+  roles?: RolesConfig; 
   version: Version;
   metadata: Metadata;
   minUTxODeposit: number;
@@ -118,7 +118,7 @@ export type RolesConfig
     = PolicyId // UsePolicyId
     | Map<RoleName,RoleTokenConfig> //Mint
     
-type RoleName = string;
+export type RoleName = string;
 
 export type RoleTokenConfig
   = Address // RoleTokenSimple
@@ -242,28 +242,27 @@ export const RestClient = function (request: AxiosInstance): RestClientAPI {
         route: ContractsEndpoint,
         input: PostContractsRequest
       ): Promise<PostContractsResponse | ErrorResponse> => {
-        const data = {
-          contract: input.contract,
-          metadata: input.metadata ?? {},
-          minUTxODeposit: input.minUTxODeposit,
-          roles: input.roles ?? null,
-          version: input.version ?? 'v1'
-        };
-        const config = {
-          headers: {
-            'X-Address': (input.addresses ?? [input.changeAddress]).join(','),
-            'X-Change-Address': input.changeAddress,
-            ...(input.collateralUTxOs && { 'X-Collateral-UTxOs': input.collateralUTxOs })
-          }
-        };
         return request
-          .post(route as string, data, config)
-          .then((response) => ({
+          .post(route as string
+               , { contract: input.contract
+                 , metadata: input.metadata
+                 , minUTxODeposit: input.minUTxODeposit
+                 , roles: input.roles
+                 , version: input.version
+                 }
+               , { headers: {
+                    'Content-Type':'application/json',
+                    'X-Address': (input.addresses ?? [input.changeAddress]).join(','),
+                    'X-Change-Address': input.changeAddress,
+                    ...(input.collateralUTxOs && { 'X-Collateral-UTxOs': input.collateralUTxOs })}
+                 })
+          .then((response) => (
+            {
             contractId: response.data.resource.contractId,
             endpoint: response.data.links.contract,
             txBody: response.data.resource.txBody
           }))
-          .catch((error) => error.status);
+          .catch((error) => ({ statusErrorCode: error.status, message: error.message }));
       }
     },
     transactions: {

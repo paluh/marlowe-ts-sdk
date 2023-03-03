@@ -71,7 +71,7 @@ describe('swap', () => {
     log('# Exercise #')
     log('############')
 
-    const baseUrl = 'http://0.0.0.0:32775';
+    const baseUrl = 'http://0.0.0.0:32815';
     const adaDepositTimeout = pipe(Date.now(),addDays(1),datetoTimeout);
     const tokenDepositTimeout = pipe(Date.now(),addDays(2),datetoTimeout);
     const amountOfADA = coerceNumber(2);
@@ -79,12 +79,13 @@ describe('swap', () => {
     const dslToken = DSL.Token(token.policyId,token.tokenName);
     const swap: DSL.Contract = Examples.swap(adaDepositTimeout,tokenDepositTimeout,amountOfADA,amountOfToken,dslToken);
     const txBuilder = new ContractTxBuilder(baseUrl);  
-    const tx = txBuilder.create
+    const tx = await txBuilder.create
                           ( swap
                           , rolesConfiguration
                               ([['Ada provider',adaProviderAccount.address]
                                ,['Token provider',tokenProviderAccount.address]])
                           , adaProviderAccount.address);
+    log (`contract tx ${JSON.stringify(tx)}`);
 
   },1000_000); 
 });

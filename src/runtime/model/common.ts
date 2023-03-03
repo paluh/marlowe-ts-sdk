@@ -27,6 +27,6 @@ export interface ContractHeader {
   link: { contract: ContractEndpoint };
 }
 
-export type RolesConfiguration = Map<RoleName,Address>;
+export type MintRoleTokenSimpleConfiguration = Map<RoleName,Address>;
 
-export const rolesConfiguration: (entries:[RoleName,Address][]) => RolesConfiguration = (e) => new Map<RoleName,Address>(e)
+export const rolesConfiguration: (entries:[RoleName,Address][]) => MintRoleTokenSimpleConfiguration = (e) => new Map<RoleName,Address>(e)
