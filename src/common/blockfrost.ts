@@ -1,7 +1,7 @@
 import { pipe } from 'fp-ts/function';
 import * as A from 'fp-ts/Array';
 import * as API from '@blockfrost/blockfrost-js'
-import { Blockfrost, Lucid, C, Network, PrivateKey, PolicyId, getAddressDetails, toUnit, fromText, NativeScript } from 'lucid-cardano';
+import { Blockfrost, Lucid, C, Network, PrivateKey, PolicyId, getAddressDetails, toUnit, fromText, NativeScript, Tx } from 'lucid-cardano';
 import * as O from 'fp-ts/Option'
 import { matchI } from 'ts-adt';
 import getUnixTime from 'date-fns/getUnixTime';
@@ -89,11 +89,13 @@ export class SingleAddressAccount {
                      
     }
 
-    public async provision(account: SingleAddressAccount, lovelaces: BigInt) : Promise<Boolean> {
-        log (`Provisioning: ${account.address}`); 
-        const tx = await this.lucid.newTx()
-                    .payToAddress(account.address, { lovelace:lovelaces.valueOf()})
-                    .complete();
+    public async provision(provisionning: Map<SingleAddressAccount,BigInt>) : Promise<Boolean> {
+        
+        const tx = await 
+         pipe(Array.from(provisionning.entries())
+             , A.reduce ( this.lucid.newTx()
+                        , (tx:Tx, account: [SingleAddressAccount,BigInt]) => tx.payToAddress(account[0].address, { lovelace:account[1].valueOf()}))
+             ).complete();
 
         const signedTx = await tx.sign().complete();
         const txHash = await signedTx.submit();

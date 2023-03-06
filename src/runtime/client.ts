@@ -17,6 +17,12 @@ JSON.stringify = JSONbigint.stringify;
   return (JSONbigint.stringify(this));
 };
 
+
+
+(Map.prototype as any).toJSON = function () {
+  return Object.fromEntries(this)
+}
+
 type FilterByContractHeader = (header: ContractHeader) => boolean;
 
 export class ContractTxBuilder {
@@ -48,8 +54,8 @@ export class ContractTxBuilder {
       = { contract: contract
         , roles: ACL.rolesConfigurationMapper.to(roles)
         , version: 'v1'
-        , metadata: new Map<bigint, Metadatum>()
-        , minUTxODeposit: 1
+        , metadata: new Map<bigint, Metadatum>([[1985n , "test"]])
+        , minUTxODeposit: 3_000_000
         , changeAddress: change
         , addresses: usedAddresses
         , collateralUTxOs: collateral

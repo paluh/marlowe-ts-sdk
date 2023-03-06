@@ -48,7 +48,8 @@ type Input = 'input_notify';
 // Currently the runtime API doesn't provide any additional information
 // beside the error status code like 400, 404, 500 etc.
 export interface ErrorResponse {
-  statusErrorCode: number;
+  details: string;
+  errorCode:string;
   message: string;
 }
 
@@ -115,14 +116,13 @@ export interface PostContractsRequest {
 
 
 export type RolesConfig 
-    = PolicyId // UsePolicyId
-    | Map<RoleName,RoleTokenConfig> //Mint
+    = Map<RoleName,RoleTokenConfig> //Mint
     
 export type RoleName = string;
 
 export type RoleTokenConfig
   = Address // RoleTokenSimple
-  | { address : Address, metadata : TokenMetadata } // RoleTokenSimple
+  // | { address : Address, metadata : TokenMetadata } // RoleTokenSimple
 
 export type TokenMetadata 
   = { name : string
@@ -213,12 +213,12 @@ export const RestClient = function (request: AxiosInstance): RestClientAPI {
         request
           .get(route as string)
           .then((response) => success<ErrorResponse, ContractState>(response.data.resource))
-          .catch((error) => failure({ statusErrorCode: error.status, message: error.message })),
+          .catch((error) => failure(error)),
       put: async (route: ContractEndpoint, input: TextEnvelope): Promise<TransactionsEndpoint | ErrorResponse> =>
         request
           .post(route as string, input)
           .then((response) => response.data.links.transactions)
-          .catch((error) => error.status)
+          .catch((error) => (error.response.data))
     },
     contracts: {
       get: async (
@@ -236,7 +236,7 @@ export const RestClient = function (request: AxiosInstance): RestClientAPI {
               prevRange: response.headers['prev-range'] as ContractsRange
             })
           )
-          .catch((error) => failure({ statusErrorCode: error.status, message: error.message }));
+          .catch((error) => failure(error));
       },
       post: async (
         route: ContractsEndpoint,
@@ -262,7 +262,7 @@ export const RestClient = function (request: AxiosInstance): RestClientAPI {
             endpoint: response.data.links.contract,
             txBody: response.data.resource.txBody
           }))
-          .catch((error) => ({ statusErrorCode: error.status, message: error.message }));
+          .catch((error) => (error.response.data));
       }
     },
     transactions: {
@@ -279,7 +279,7 @@ export const RestClient = function (request: AxiosInstance): RestClientAPI {
             nextRange: response.headers['next-range'],
             prevRange: response.headers['prev-range']
           }))
-          .catch((error) => error.status);
+          .catch((error) => (error.response.data));
       }
     }
   };
