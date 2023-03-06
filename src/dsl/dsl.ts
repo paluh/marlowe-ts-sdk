@@ -1,22 +1,18 @@
 /* eslint-disable no-use-before-define */
 /* eslint-disable sort-keys-fix/sort-keys-fix */
-import BigNumber from 'bignumber.js';
 
 export type Party = { address: string } | { role_token: string };
 
 export type SomeNumber = number | string | bigint;
 
-export const coerceNumber = function (n: SomeNumber): BigNumber {
+export const coerceNumber = function (n: SomeNumber): BigInt {
   const isNumeric = /^-?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i;
   if (typeof n === 'string' && isNumeric.test(String(n))) {
-    return new BigNumber(n);
+    return BigInt(n);
   } else if (typeof n === 'bigint') {
-    return new BigNumber(n.toString());
+    return BigInt(n);
   } else if (typeof n === 'number') {
-    if (n > Number.MAX_SAFE_INTEGER || n < -Number.MAX_SAFE_INTEGER) {
-      throw new Error('Unsafe use of JavaScript numbers. For amounts this large, please use BigNumber.');
-    }
-    return new BigNumber(n);
+    return BigInt(n);
   }
   throw new Error('Not a valid number');
 };
@@ -57,7 +53,7 @@ export const ValueId = function (valueIdentifier: string): ValueId {
 
 export type Value =
   | { amount_of_token: Token; in_account: AccountId }
-  | BigNumber
+  | BigInt
   | { constant_param: String }
   | { negate: Value }
   | { add: Value; and: Value }
@@ -77,11 +73,11 @@ const coerceValue = function (val: EValue): Value {
     if (val > Number.MAX_SAFE_INTEGER || val < -Number.MAX_SAFE_INTEGER) {
       throw new Error('Unsafe use of JavaScript numbers. For amounts this large, please use BigNumber.');
     }
-    return new BigNumber(val);
+    return BigInt(val);
   } else if (typeof val === 'bigint') {
-    return new BigNumber(val.toString());
+    return BigInt(val);
   } else if (typeof val === 'string' && val !== 'time_interval_start' && val !== 'time_interval_end') {
-    return new BigNumber(val);
+    return BigInt(val);
   }
   return val;
 };
@@ -186,7 +182,7 @@ export const TrueObs: Observation = true;
 
 export const FalseObs: Observation = false;
 
-export type Bound = { from: BigNumber; to: BigNumber };
+export type Bound = { from: BigInt; to: BigInt };
 
 export const Bound = function (boundMin: SomeNumber, boundMax: SomeNumber): Bound {
   return { from: coerceNumber(boundMin), to: coerceNumber(boundMax) };
@@ -230,7 +226,7 @@ export const Case = function (caseAction: Action, continuation: Contract): Case 
   return { case: caseAction, then: continuation };
 };
 
-export type Timeout = { time_param: String } | BigNumber;
+export type Timeout = { time_param: String } | BigInt;
 
 export type ETimeout = SomeNumber | Timeout;
 

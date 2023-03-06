@@ -9,7 +9,13 @@ import { pipe } from 'fp-ts/function';
 import axios from 'axios';
 import * as DSL from '../dsl';
 import curlirize from 'axios-curlirize';
+import JSONbigint from 'json-bigint'
 
+JSON.stringify = JSONbigint.stringify;
+
+(BigInt.prototype as any).toJSON = function () {
+  return (JSONbigint.stringify(this));
+};
 
 type FilterByContractHeader = (header: ContractHeader) => boolean;
 
@@ -21,6 +27,13 @@ export class ContractTxBuilder {
       baseURL,
       headers: { Accept: 'application/json', ContentType: 'application/json' }
     });
+   
+
+    instance.interceptors.response.use((response) => {
+      response.data = JSONbigint.parse(response.data)
+      return response
+    });
+
     curlirize(instance);
     this.restClient = Internal.RestClient(instance);
   }

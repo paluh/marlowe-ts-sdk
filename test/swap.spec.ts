@@ -13,7 +13,7 @@ import { ContractTxBuilder, MarloweRuntimeClient } from '../src/runtime/client'
 import { coerceNumber } from '../src/dsl'
 import { log } from '../src/common/logging'
 import { Address, RoleName, rolesConfiguration } from '../src/runtime/model/common'
-
+import JSONbigint from 'json-bigint'
 
 describe('swap', () => {
   it('can execute the nominal case', async () => {
@@ -71,21 +71,23 @@ describe('swap', () => {
     log('# Exercise #')
     log('############')
 
-    const baseUrl = 'http://0.0.0.0:32815';
+    const baseUrl = 'http://0.0.0.0:32950';
     const adaDepositTimeout = pipe(Date.now(),addDays(1),datetoTimeout);
     const tokenDepositTimeout = pipe(Date.now(),addDays(2),datetoTimeout);
     const amountOfADA = coerceNumber(2);
     const amountOfToken = coerceNumber(3);;
-    const dslToken = DSL.Token(token.policyId,token.tokenName);
+    log (`tx ${JSONbigint.stringify(amountOfToken)}`);
+    const dslToken = DSL.Token("2a2a2d0be2ffc2452aa4e513b3844b5766d846a124f9f293254fd934","toKenA") //token.policyId,token.tokenName);
     const swap: DSL.Contract = Examples.swap(adaDepositTimeout,tokenDepositTimeout,amountOfADA,amountOfToken,dslToken);
+    log (`tx ${JSONbigint.stringify(swap)}`);
     const txBuilder = new ContractTxBuilder(baseUrl);  
     const tx = await txBuilder.create
                           ( swap
                           , rolesConfiguration
-                              ([['Ada provider',adaProviderAccount.address]
-                               ,['Token provider',tokenProviderAccount.address]])
-                          , adaProviderAccount.address);
-    log (`contract tx ${JSON.stringify(tx)}`);
+                              ([['Ada provider', 'addressA']//adaProviderAccount.address]
+                               ,['Token provider', 'addressA' ]]) //tokenProviderAccount.address]])
+                          , 'addressA');//adaProviderAccount.address);
+    log (`contract tx ${JSONbigint.stringify(tx)}`);
 
   },1000_000); 
 });
