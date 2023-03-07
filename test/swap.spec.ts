@@ -16,6 +16,7 @@ import { Address, RoleName, rolesConfiguration } from '../src/runtime/model/comm
 import JSONbigint from 'json-bigint'
 import * as TE from 'fp-ts/TaskEither'
 import { either } from 'fp-ts'
+import { Transaction } from 'lucid-cardano/types/src/core/wasm_modules/cardano_multiplatform_lib_web/cardano_multiplatform_lib'
 
 describe('swap', () => {
   it('can execute the nominal case', async () => {
@@ -27,45 +28,42 @@ describe('swap', () => {
     log('# Setup #')
     log('#########')
 
-    // const configuration = new Configuration ('previewcz3TyjIzynbADHOoV3K9i9yK1zIvMVzP'
-    //                                         ,'https://cardano-preview.blockfrost.io/api/v0'
-    //                                         ,'Preview');
-    // const bank = await SingleAddressAccount.Initialise (configuration,getPrivateKeyFromHexString('5820e09f58cd4b2793ff35281c36af06760d4ab993829c7a1d3b29db2947576339b1'))
-    // const adaProviderAccount = await SingleAddressAccount.Random(configuration);
-    // const expectdAmountProvisionnedforAdaProvider = 10_000_000n
-    // const tokenProviderAccount = await SingleAddressAccount.Random(configuration);
-    // const expectdAmountProvisionnedforTokenProvider = 10_000_000n
-    // const tokenName = "TokenA"  
-    // const expectedTokenAmount = 50n
+    const configuration = new Configuration ('previewcz3TyjIzynbADHOoV3K9i9yK1zIvMVzP'
+                                            ,'https://cardano-preview.blockfrost.io/api/v0'
+                                            ,'Preview');
+    const bank = await SingleAddressAccount.Initialise (configuration,getPrivateKeyFromHexString('5820e09f58cd4b2793ff35281c36af06760d4ab993829c7a1d3b29db2947576339b1'))
+    const adaProviderAccount = await SingleAddressAccount.Random(configuration);
+    const expectdAmountProvisionnedforAdaProvider = 10_000_000n
+    const tokenProviderAccount = await SingleAddressAccount.Random(configuration);
+    const expectdAmountProvisionnedforTokenProvider = 10_000_000n
+    const tokenName = "TokenA"  
+    const expectedTokenAmount = 50n
 
-    // await bank.adaBalance().then ((amount) => {
-    //   log(`Bank public key: ${bank.address}`);
-    //   log(`Balance: ${ADA.format(amount)}`);
-    //   expect(amount).toBeGreaterThan(100_000_000)
-    // });
+    await bank.adaBalance().then ((amount) => {
+      log(`Bank public key: ${bank.address}`);
+      log(`Balance: ${ADA.format(amount)}`);
+      expect(amount).toBeGreaterThan(100_000_000)
+    });
     
-    // await bank.provision(new Map<SingleAddressAccount,BigInt> ([[adaProviderAccount,expectdAmountProvisionnedforAdaProvider],
-    //                                                             [tokenProviderAccount,expectdAmountProvisionnedforTokenProvider]]));
+    await bank.provision(new Map<SingleAddressAccount,BigInt> ([[adaProviderAccount,expectdAmountProvisionnedforAdaProvider],
+                                                                [tokenProviderAccount,expectdAmountProvisionnedforTokenProvider]]));
 
-    // await adaProviderAccount.adaBalance().then ((amount) => {
-    //   log(`Ada Provider Address :', ${adaProviderAccount.address}`);
-    //   log(`Balance:', ${ADA.format(amount)}`);
-    //   expect(amount).toBe(expectdAmountProvisionnedforAdaProvider);
-    // })
+    await adaProviderAccount.adaBalance().then ((amount) => {
+      log(`Ada Provider Address :', ${adaProviderAccount.address}`);
+      log(`Balance:', ${ADA.format(amount)}`);
+      expect(amount).toBe(expectdAmountProvisionnedforAdaProvider);
+    })
 
-    // await tokenProviderAccount.adaBalance().then ((amount) => {
-    //   log(`Token Provider Address:', ${tokenProviderAccount.address}`);
-    //   log(`Balance: ${ADA.format(amount)}`);
-    //   expect(amount).toBe(expectdAmountProvisionnedforTokenProvider);
-    // }); 
+    await tokenProviderAccount.adaBalance().then ((amount) => {
+      log(`Token Provider Address:', ${tokenProviderAccount.address}`);
+      log(`Balance: ${ADA.format(amount)}`);
+      expect(amount).toBe(expectdAmountProvisionnedforTokenProvider);
+    }); 
     
-    // const token = await tokenProviderAccount.mintTokens(tokenName,expectedTokenAmount)
-    // const tokenAmount = await tokenProviderAccount.tokenBalance(token)
-    // log(`Token Balance: ${tokenAmount}`);
-    // await delay(10_000)
-    // const tokenAmount2 = await tokenProviderAccount.tokenBalance(token)
-    // log(`Token Balance: ${tokenAmount2}`);
-    // expect(tokenAmount2).toBe(expectedTokenAmount);
+    const token = await tokenProviderAccount.mintTokens(tokenName,expectedTokenAmount)
+    const tokenAmount = await tokenProviderAccount.tokenBalance(token)
+    log(`Token Balance: ${tokenAmount}`);
+    expect(tokenAmount).toBe(expectedTokenAmount);
     
     log('############')
     log('# Exercise #')
@@ -81,15 +79,18 @@ describe('swap', () => {
     const swap: DSL.Contract = Examples.swap(adaDepositTimeout,tokenDepositTimeout,amountOfADA,amountOfToken,dslToken);
     log (`tx ${JSONbigint.stringify(swap)}`);
     const txBuilder = new ContractTxBuilder(baseUrl);  
-   
-    const tx = await txBuilder.create
-                          ( swap
-                          , rolesConfiguration
-                              ([['Ada provider', 'addr_test1vr35jfjty7l4np2gtmmgdffkrdpv2h8rsflz32cy0tw5nfqfud4s3'] //adaProviderAccount.address]
-                               ,['Token provider', 'addr_test1vr7yp0u6srquk77lgqyy4cdhv4tce54l2v2leadjwap943chj6vkz' ]]) //tokenProviderAccount.address]])
-                          , 'addr_test1vr35jfjty7l4np2gtmmgdffkrdpv2h8rsflz32cy0tw5nfqfud4s3') ()
+    const createTx = txBuilder.create
+                              ( swap
+                              , rolesConfiguration
+                                  ([['Ada provider', adaProviderAccount.address] //'addr_test1vr35jfjty7l4np2gtmmgdffkrdpv2h8rsflz32cy0tw5nfqfud4s3'] 
+                                  ,['Token provider', tokenProviderAccount.address]]) //'addr_test1vr7yp0u6srquk77lgqyy4cdhv4tce54l2v2leadjwap943chj6vkz' ]]) 
+                              , adaProviderAccount.address)//'addr_test1vr35jfjty7l4np2gtmmgdffkrdpv2h8rsflz32cy0tw5nfqfud4s3') 
+    const contractId = await (pipe (createTx 
+                           , TE.chain(([contractId,tx]) => pipe ( adaProviderAccount.signAndsubmitAndWaitConfirmation(tx.cborHex)
+                                                                , TE.map((b) => contractId))
+                                      )))()
                     
-    log (`contract tx ${JSONbigint.stringify(tx)}`);
+    log (`contract id submitted ${JSONbigint.stringify(contractId)}`);
     
   },1000_000); 
 });

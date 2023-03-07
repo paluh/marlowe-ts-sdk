@@ -1,12 +1,13 @@
 import { pipe } from 'fp-ts/function';
 import * as A from 'fp-ts/Array';
 import * as API from '@blockfrost/blockfrost-js'
-import { Blockfrost, Lucid, C, Network, PrivateKey, PolicyId, getAddressDetails, toUnit, fromText, NativeScript, Tx } from 'lucid-cardano';
+import { Blockfrost, Lucid, C, Network, PrivateKey, PolicyId, getAddressDetails, toUnit, fromText, NativeScript, Tx, Transaction, TxSigned } from 'lucid-cardano';
 import * as O from 'fp-ts/Option'
 import { matchI } from 'ts-adt';
 import getUnixTime from 'date-fns/getUnixTime';
 import { addDays, addHours,addMinutes, addSeconds } from 'date-fns/fp'
 import { log } from './logging'
+import * as TE from 'fp-ts/TaskEither'
 
 export class Token {
     policyId:string;
@@ -133,6 +134,23 @@ export class SingleAddressAccount {
         return this.lucid.awaitTx(txHash).then((result) => new Token(policyId,tokenName));
     }
 
+    public signAndsubmitAndWaitConfirmation(transaction : Transaction) : TE.TaskEither<Error,boolean> {
+        const sign = TE.tryCatch(
+            () => this.lucid.fromTx(transaction).sign().complete(),
+            (reason) => new Error(`Error while signing : ${reason}`));
+        const submit = (signedTx : TxSigned ) => TE.tryCatch(
+                        () => signedTx.submit(),
+                        (reason) => new Error(`Error while submitting : ${reason}`));
+        const waitConfirmation = (txHash : string ) => TE.tryCatch(
+                                    () => this.lucid.awaitTx(txHash),
+                                    (reason) => new Error(`Error while submitting : ${reason}`));                    
+        return pipe(sign
+            ,TE.chainFirst((x) => TE.of(log(`Transaction signed. ${x}`)))
+            ,TE.chain(submit)
+            ,TE.chainFirst((txHash) => TE.of(log(`Transaction ${txHash} submitted.`)))
+            ,TE.chain(waitConfirmation));
+        
+    }
 }
 
 
