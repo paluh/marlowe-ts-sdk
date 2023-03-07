@@ -30,3 +30,9 @@ export interface ContractHeader {
 export type MintRoleTokenSimpleConfiguration = Map<RoleName,Address>;
 
 export const rolesConfiguration: (entries:[RoleName,Address][]) => MintRoleTokenSimpleConfiguration = (e) => new Map<RoleName,Address>(e)
+
+export interface MarloweTx {
+  type: string;
+  description?: string;
+  cborHex: string;
+}

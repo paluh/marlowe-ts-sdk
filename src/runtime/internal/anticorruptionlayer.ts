@@ -17,6 +17,19 @@ export const contractHeaderMapper: Convertable<In.ContractHeader,Out.ContractHea
   }
 }
 
+export const contractTxMapper: Convertable<In.MarloweTx,Out.Tx> = {
+  from (out) {
+    return { type: out.type
+           , description: out.description
+           , cborHex: out.cborHex
+           }
+  },
+  to (inObject) {
+    throw new Error("Not Implemented");
+  }
+}
+
+
 export const rolesConfigurationMapper: Convertable<In.MintRoleTokenSimpleConfiguration,Out.RolesConfig> = {
   from (out) {
     throw new Error("Not Implemented");

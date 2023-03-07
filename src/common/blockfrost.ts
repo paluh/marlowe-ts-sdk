@@ -132,6 +132,7 @@ export class SingleAddressAccount {
         log(`Transaction ${txHash} submitted.`);
         return this.lucid.awaitTx(txHash).then((result) => new Token(policyId,tokenName));
     }
+
 }
 
 

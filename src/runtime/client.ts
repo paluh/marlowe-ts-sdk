@@ -2,7 +2,7 @@ import * as A from 'fp-ts/Array';
 import * as ACL from './internal/anticorruptionlayer';
 import { contractHeaderMapper,rolesConfigurationMapper } from './internal/anticorruptionlayer';
 import { ErrorResponse, GetContractsResponse, contractsEndpoint } from './internal/restAPI';
-import { Address, FetchResult, MintRoleTokenSimpleConfiguration,Collateral, Metadatum, ContractHeader } from './model/common';
+import { Address, FetchResult, MintRoleTokenSimpleConfiguration,Collateral, Metadatum, ContractHeader, ContractId, MarloweTx } from './model/common';
 import * as Internal from './internal/restAPI';
 import { matchI } from 'ts-adt';
 import { pipe } from 'fp-ts/function';
@@ -10,6 +10,7 @@ import axios from 'axios';
 import * as DSL from '../dsl';
 import curlirize from 'axios-curlirize';
 import JSONbigint from 'json-bigint'
+import * as TE from 'fp-ts/TaskEither'
 
 JSON.stringify = JSONbigint.stringify;
 
@@ -35,10 +36,10 @@ export class ContractTxBuilder {
     });
    
 
-    instance.interceptors.response.use((response) => {
-      response.data = JSONbigint.parse(response.data)
-      return response
-    });
+    // instance.interceptors.response.use((response) => {
+    //   response.data = JSONbigint.parse(response.data)
+    //   return response
+    // });
 
     curlirize(instance);
     this.restClient = Internal.RestClient(instance);
@@ -49,7 +50,7 @@ export class ContractTxBuilder {
           , roles: MintRoleTokenSimpleConfiguration
           , change: Address
           , collateral?: Collateral[]
-          , usedAddresses?:Address[] ) {
+          , usedAddresses?:Address[] ) : TE.TaskEither<Error,[ContractId,MarloweTx]>  {
     const request : Internal.PostContractsRequest 
       = { contract: contract
         , roles: ACL.rolesConfigurationMapper.to(roles)
@@ -60,7 +61,10 @@ export class ContractTxBuilder {
         , addresses: usedAddresses
         , collateralUTxOs: collateral
     }
-    return this.restClient.contracts.post(contractsEndpoint,request);
+    return pipe( this.restClient.contracts.post(contractsEndpoint,request)
+               , TE.map((postContractsResponse) =>  
+                    [ postContractsResponse.contractId
+                    , ACL.contractTxMapper.from(postContractsResponse.tx)]));
   }
 
 }

@@ -1,9 +1,12 @@
 /* eslint-disable sort-keys-fix/sort-keys-fix */
 /* eslint-disable no-use-before-define */
-import { AxiosInstance } from 'axios';
+import axios from 'axios';
+import { AxiosInstance, AxiosResponse } from 'axios';
 import { Address } from 'lucid-cardano';
 import { FetchResult, Metadata, failure, success } from '../model/common';
 import * as DSL from '../../dsl';
+import * as TE from 'fp-ts/TaskEither'
+import { flow, identity, pipe } from 'fp-ts/lib/function';
 // API responses brings us back URLs so we are encouraged to not construct them manually.
 // We use a opaque string to represent URLs for that.
 //
@@ -83,7 +86,7 @@ export interface ContractState extends ContractHeader {
   currentContract?: DSL.Contract;
   state?: State;
   utxo?: ContractId;
-  txBody?: TextEnvelope;
+  txBody?: Tx;
 }
 
 declare const ContractsRange: unique symbol;
@@ -141,12 +144,10 @@ export type TokenMetadataFile
 export interface PostContractsResponse {
   contractId: TxOutRef;
   endpoint: ContractEndpoint;
-  // This contains a CBOR of the `TxBody`. The REST API gonna be extended so
-  // we can also fetch a whole Transaction (CIP-30 `signTx` expects actually a whole `Tx`).
-  txBody: TextEnvelope;
+  tx: Tx;
 }
 
-interface TextEnvelope {
+export interface Tx {
   type: string;
   description?: string;
   cborHex: string;
@@ -195,11 +196,11 @@ export interface RestClientAPI {
       route: ContractsEndpoint,
       range?: ContractsRange
     ) => Promise<FetchResult<ErrorResponse, GetContractsResponse>>;
-    post: (route: ContractsEndpoint, input: PostContractsRequest) => Promise<PostContractsResponse | ErrorResponse>;
+    post: (route: ContractsEndpoint, input: PostContractsRequest) => TE.TaskEither<Error,PostContractsResponse>;
   };
   contract: {
     get: (route: ContractEndpoint) => Promise<FetchResult<ErrorResponse, ContractState>>;
-    put: (route: ContractEndpoint, input: TextEnvelope) => Promise<TransactionsEndpoint | ErrorResponse>;
+    put: (route: ContractEndpoint, input: Tx) => Promise<TransactionsEndpoint | ErrorResponse>;
   };
   transactions: {
     get: (route: TransactionsEndpoint) => Promise<GetTransactionsResponse | ErrorResponse>;
@@ -214,7 +215,7 @@ export const RestClient = function (request: AxiosInstance): RestClientAPI {
           .get(route as string)
           .then((response) => success<ErrorResponse, ContractState>(response.data.resource))
           .catch((error) => failure(error)),
-      put: async (route: ContractEndpoint, input: TextEnvelope): Promise<TransactionsEndpoint | ErrorResponse> =>
+      put: async (route: ContractEndpoint, input: Tx): Promise<TransactionsEndpoint | ErrorResponse> =>
         request
           .post(route as string, input)
           .then((response) => response.data.links.transactions)
@@ -238,32 +239,49 @@ export const RestClient = function (request: AxiosInstance): RestClientAPI {
           )
           .catch((error) => failure(error));
       },
-      post: async (
+      post: (
         route: ContractsEndpoint,
         input: PostContractsRequest
-      ): Promise<PostContractsResponse | ErrorResponse> => {
-        return request
-          .post(route as string
-               , { contract: input.contract
-                 , metadata: input.metadata
-                 , minUTxODeposit: input.minUTxODeposit
-                 , roles: input.roles
-                 , version: input.version
-                 }
-               , { headers: {
-                    'Content-Type':'application/json',
-                    'X-Address': (input.addresses ?? [input.changeAddress]).join(','),
-                    'X-Change-Address': input.changeAddress,
-                    ...(input.collateralUTxOs && { 'X-Collateral-UTxOs': input.collateralUTxOs })}
-                 })
-          .then((response) => (
-            {
-            contractId: response.data.resource.contractId,
-            endpoint: response.data.links.contract,
-            txBody: response.data.resource.txBody
-          }))
-          .catch((error) => (error.response.data));
-      }
+      ): TE.TaskEither<Error,PostContractsResponse> => 
+        pipe(httpPost(request)
+              ( (route as string)
+              , { contract: input.contract
+                  , metadata: input.metadata
+                  , minUTxODeposit: input.minUTxODeposit
+                  , roles: input.roles
+                  , version: input.version
+                  }
+              , { headers: {
+                'Accept': 'application/vendor.iog.marlowe-runtime.contract-tx-json',
+                'Content-Type':'application/json',
+                'X-Address': (input.addresses ?? [input.changeAddress]).join(','),
+                'X-Change-Address': input.changeAddress,
+                ...(input.collateralUTxOs && { 'X-Collateral-UTxOs': input.collateralUTxOs })}})
+            ,TE.map((response) => ({ contractId: response.resource.contractId,
+                                 endpoint: response.links.contract,
+                                 tx: response.resource.tx
+                                 })))
+        // return tryCatch( request
+        //                   .post(route as string
+        //                       , { contract: input.contract
+        //                         , metadata: input.metadata
+        //                         , minUTxODeposit: input.minUTxODeposit
+        //                         , roles: input.roles
+        //                         , version: input.version
+        //                         }
+        //                       , { headers: {
+        //                             'Accept': 'application/vendor.iog.marlowe-runtime.contract-tx-json',
+        //                             'Content-Type':'application/json',
+        //                             'X-Address': (input.addresses ?? [input.changeAddress]).join(','),
+        //                             'X-Change-Address': input.changeAddress,
+        //                             ...(input.collateralUTxOs && { 'X-Collateral-UTxOs': input.collateralUTxOs })}
+        //                         }).then((response) => 
+        //                             ({
+        //                             contractId: response.data.resource.contractId,
+        //                             endpoint: response.data.links.contract,
+        //                             tx: response.data.resource.tx
+        //                             }))
+        //                , (error) => error.response.data)
     },
     transactions: {
       get: async (
@@ -284,3 +302,13 @@ export const RestClient = function (request: AxiosInstance): RestClientAPI {
     }
   };
 };
+
+
+const makeReq = TE.bimap(
+  (e: unknown) => (e instanceof Error ? e : new Error(String(e))),
+  (v: AxiosResponse): any => v.data,
+);
+
+export const httpGet = flow(TE.tryCatchK(axios.get, identity), makeReq);
+
+export const httpPost  = (request: AxiosInstance) => flow(TE.tryCatchK(request.post, identity), makeReq);
