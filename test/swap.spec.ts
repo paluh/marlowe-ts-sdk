@@ -1,8 +1,8 @@
 
 import * as ADA from '../src/common/ada'
 import { datetoTimeout } from '../src/common/date'
-import { Configuration, getPrivateKeyFromHexString, SingleAddressAccount} from '../src/common/blockfrost'
-import { some, none, getOrElse } from 'fp-ts/Option'
+import { Configuration, getPrivateKeyFromHexString, SingleAddressAccount, Asset} from '../src/common/blockfrost'
+import { some, none, getOrElse, throwError } from 'fp-ts/Option'
 import { pipe } from 'fp-ts/function'
 import * as DSL from '../src/dsl';
 import * as Examples from '../src/examples';
@@ -46,11 +46,11 @@ describe('swap', () => {
     });
     
     await bank.provision(new Map<SingleAddressAccount,BigInt> ([[adaProviderAccount,expectdAmountProvisionnedforAdaProvider],
-                                                                [tokenProviderAccount,expectdAmountProvisionnedforTokenProvider]]));
+                                                                [tokenProviderAccount,expectdAmountProvisionnedforTokenProvider]])) ();
 
     await adaProviderAccount.adaBalance().then ((amount) => {
       log(`Ada Provider Address :', ${adaProviderAccount.address}`);
-      log(`Balance:', ${ADA.format(amount)}`);
+      log(`Balance: ${ADA.format(amount)}`);
       expect(amount).toBe(expectdAmountProvisionnedforAdaProvider);
     })
 
@@ -59,9 +59,11 @@ describe('swap', () => {
       log(`Balance: ${ADA.format(amount)}`);
       expect(amount).toBe(expectdAmountProvisionnedforTokenProvider);
     }); 
-    
-    const token = await tokenProviderAccount.mintTokens(tokenName,expectedTokenAmount)
-    const tokenAmount = await tokenProviderAccount.tokenBalance(token)
+    const policyRefs = tokenProviderAccount.randomPolicyId ();
+    const asset = new Asset (policyRefs[1],tokenName)
+    await (tokenProviderAccount.mintTokens(policyRefs,tokenName,expectedTokenAmount)) ()
+    await delay(10_000);
+    const tokenAmount = await tokenProviderAccount.tokenBalance(asset)
     log(`Token Balance: ${tokenAmount}`);
     expect(tokenAmount).toBe(expectedTokenAmount);
     
@@ -69,24 +71,25 @@ describe('swap', () => {
     log('# Exercise #')
     log('############')
 
-    const baseUrl = 'http://0.0.0.0:32997';
+    const baseUrl = 'http://0.0.0.0:32856';
     const adaDepositTimeout = pipe(Date.now(),addDays(1),datetoTimeout);
     const tokenDepositTimeout = pipe(Date.now(),addDays(2),datetoTimeout);
     const amountOfADA = coerceNumber(2);
     const amountOfToken = coerceNumber(3);;
     log (`tx ${JSONbigint.stringify(amountOfToken)}`);
-    const dslToken = DSL.Token('2462c177e39b7901b07b21647497e22066ec71fd1387e408039bc4b3','TokenA'); //token.policyId,token.tokenName);
+    const dslToken = DSL.Token(asset.policyId,asset.tokenName);
     const swap: DSL.Contract = Examples.swap(adaDepositTimeout,tokenDepositTimeout,amountOfADA,amountOfToken,dslToken);
     log (`tx ${JSONbigint.stringify(swap)}`);
     const txBuilder = new ContractTxBuilder(baseUrl);  
     const createTx = txBuilder.create
                               ( swap
                               , rolesConfiguration
-                                  ([['Ada provider', adaProviderAccount.address] //'addr_test1vr35jfjty7l4np2gtmmgdffkrdpv2h8rsflz32cy0tw5nfqfud4s3'] 
-                                  ,['Token provider', tokenProviderAccount.address]]) //'addr_test1vr7yp0u6srquk77lgqyy4cdhv4tce54l2v2leadjwap943chj6vkz' ]]) 
-                              , adaProviderAccount.address)//'addr_test1vr35jfjty7l4np2gtmmgdffkrdpv2h8rsflz32cy0tw5nfqfud4s3') 
+                                  ([['Ada provider', adaProviderAccount.address]  
+                                  ,['Token provider', tokenProviderAccount.address]]) 
+                              , adaProviderAccount.address)
     const contractId = await (pipe (createTx 
-                           , TE.chain(([contractId,tx]) => pipe ( adaProviderAccount.signAndsubmitAndWaitConfirmation(tx.cborHex)
+                           , TE.chain(([contractId,tx]) => pipe ( adaProviderAccount.fromTxCBOR(tx.cborHex)
+                                                                , adaProviderAccount.signSubmitAndWaitConfirmation
                                                                 , TE.map((b) => contractId))
                                       )))()
                     

@@ -1,7 +1,7 @@
 import { pipe } from 'fp-ts/function';
 import * as A from 'fp-ts/Array';
 import * as API from '@blockfrost/blockfrost-js'
-import { Blockfrost, Lucid, C, Network, PrivateKey, PolicyId, getAddressDetails, toUnit, fromText, NativeScript, Tx, Transaction, TxSigned } from 'lucid-cardano';
+import { Blockfrost, Lucid, C, Network, PrivateKey, PolicyId, getAddressDetails, toUnit, fromText, NativeScript, Tx, Transaction, TxSigned, TxComplete, Script } from 'lucid-cardano';
 import * as O from 'fp-ts/Option'
 import { matchI } from 'ts-adt';
 import getUnixTime from 'date-fns/getUnixTime';
@@ -9,7 +9,7 @@ import { addDays, addHours,addMinutes, addSeconds } from 'date-fns/fp'
 import { log } from './logging'
 import * as TE from 'fp-ts/TaskEither'
 
-export class Token {
+export class Asset {
     policyId:string;
     tokenName:string;
 
@@ -77,11 +77,9 @@ export class SingleAddressAccount {
                      
     }
     
-    public async tokenBalance (token:Token) { 
+    public async tokenBalance (asset:Asset) { 
         const content = await this.blockfrostApi.addresses(this.address);
-        const unit = toUnit(token.policyId, fromText(token.tokenName));
-        log(`token ${unit}`)
-        log(`content ${JSON.stringify(content)}`)
+        const unit = toUnit(asset.policyId, fromText(asset.tokenName));
         return pipe( content.amount??[]
             , A.filter((amount) => amount.unit === unit)
             , A.map((amount) => BigInt(amount.quantity))
@@ -90,26 +88,16 @@ export class SingleAddressAccount {
                      
     }
 
-    public async provision(provisionning: Map<SingleAddressAccount,BigInt>) : Promise<Boolean> {
-        
-        const tx = await 
-         pipe(Array.from(provisionning.entries())
-             , A.reduce ( this.lucid.newTx()
-                        , (tx:Tx, account: [SingleAddressAccount,BigInt]) => tx.payToAddress(account[0].address, { lovelace:account[1].valueOf()}))
-             ).complete();
+    public provision : (provisionning: Map<SingleAddressAccount,BigInt>) => TE.TaskEither<Error,Boolean> = (provisionning) => 
+        pipe ( Array.from(provisionning.entries())
+                    , A.reduce ( this.lucid.newTx()
+                              , (tx:Tx, account: [SingleAddressAccount,BigInt]) => tx.payToAddress(account[0].address, { lovelace:account[1].valueOf()}))
+                    , build                   
+                    , TE.chain(this.signSubmitAndWaitConfirmation))
 
-        const signedTx = await tx.sign().complete();
-        const txHash = await signedTx.submit();
-        log(`Transaction ${txHash} submitted.`);
-        return this.lucid.awaitTx(txHash);
-    }
-    
-    public async mintTokens(tokenName:string, amount: BigInt) : Promise<Token> {
+    public randomPolicyId() : [Script,PolicyId] {
         const { paymentCredential } = getAddressDetails(this.address);
         const before = this.lucid.currentSlot() + (5 * 60) 
-        log (`before : ${before}`)
-        const validTo = this.lucid.currentSlot() + 60
-        log (`current slot : ${validTo}`) 
         const json : NativeScript = {
                         type: "all",
                         scripts: [
@@ -120,41 +108,60 @@ export class SingleAddressAccount {
                             { type: "sig", keyHash: paymentCredential?.hash! }
                         ],
                     };
-        log(JSON.stringify(json))
-        const mintingPolicy = this.lucid.utils.nativeScriptFromJson(json);
-        const policyId = this.lucid.utils.mintingPolicyToId(mintingPolicy);  
-        const tx = await this.lucid.newTx()
-                            .mintAssets({[toUnit(policyId, fromText(tokenName))]: amount.valueOf()})
-                            .validTo(Date.now() + 100000)
-                            .attachMintingPolicy(mintingPolicy)
-                            .complete();                   
-        const signedTx = await tx.sign().complete();
-        const txHash = await signedTx.submit();
-        log(`Transaction ${txHash} submitted.`);
-        return this.lucid.awaitTx(txHash).then((result) => new Token(policyId,tokenName));
+        const script = this.lucid.utils.nativeScriptFromJson(json);
+        const policyId = this.lucid.utils.mintingPolicyToId(script); 
+        return [script,policyId];
     }
 
-    public signAndsubmitAndWaitConfirmation(transaction : Transaction) : TE.TaskEither<Error,boolean> {
-        const sign = TE.tryCatch(
-            () => this.lucid.fromTx(transaction).sign().complete(),
-            (reason) => new Error(`Error while signing : ${reason}`));
-        const submit = (signedTx : TxSigned ) => TE.tryCatch(
-                        () => signedTx.submit(),
-                        (reason) => new Error(`Error while submitting : ${reason}`));
-        const waitConfirmation = (txHash : string ) => TE.tryCatch(
-                                    () => this.lucid.awaitTx(txHash),
-                                    (reason) => new Error(`Error while submitting : ${reason}`));                    
-        return pipe(sign
-            ,TE.chainFirst((x) => TE.of(log(`Transaction signed. ${x}`)))
-            ,TE.chain(submit)
-            ,TE.chainFirst((txHash) => TE.of(log(`Transaction ${txHash} submitted.`)))
-            ,TE.chain(waitConfirmation));
-        
+    public mintTokens(policyRefs : [Script,PolicyId] , tokenName:string, amount: BigInt) : TE.TaskEither<Error,boolean> {
+        const { paymentCredential } = getAddressDetails(this.address);
+        const before = this.lucid.currentSlot() + (5 * 60) 
+        const validTo = this.lucid.currentSlot() + 60
+        const [mintingPolicy,policyId] = policyRefs             
+        return pipe( this.lucid.newTx()
+                                .mintAssets({[toUnit(policyId, fromText(tokenName))]: amount.valueOf()})
+                                .validTo(Date.now() + 100000)
+                                .attachMintingPolicy(mintingPolicy)
+                   , build
+                   , TE.chain(this.signSubmitAndWaitConfirmation)
+                   )
     }
+
+    public fromTxCBOR (cbor : string) : TxComplete {
+        return this.lucid.fromTx(cbor)
+    } 
+
+    public sign : (txBuilt : TxComplete ) => TE.TaskEither<Error,TxSigned> 
+        =  (txBuilt) => 
+                TE.tryCatch(
+                    () => txBuilt.sign().complete(),
+                    (reason) => new Error(`Error while signing : ${reason}`));
+    
+        
+    public submit : (signedTx : TxSigned ) => TE.TaskEither<Error,string> 
+        = (signedTx) => 
+            TE.tryCatch(
+                () => signedTx.submit(),
+                (reason) => new Error(`Error while submitting : ${reason}`));
+    
+    public waitConfirmation : (txHash : string ) => TE.TaskEither<Error,boolean> 
+        = (txHash) => 
+            TE.tryCatch(
+                () => this.lucid.awaitTx(txHash),
+                (reason) => new Error(`Error while submitting : ${reason}`));
+
+    public signSubmitAndWaitConfirmation : (txBuilt : TxComplete) => TE.TaskEither<Error,boolean> 
+        = (txBuilt) =>         
+            pipe(this.sign(txBuilt)
+                ,TE.chainFirst((x) => TE.of(log(`Transaction signed. ${x}`)))
+                ,TE.chain(this.submit)
+                ,TE.chainFirst((txHash) => TE.of(log(`Transaction ${txHash} submitted.`)))
+                ,TE.chain(this.waitConfirmation))
+    
+        
 }
 
-
-
-
-// const privateKey = lucid.utils.generatePrivateKey();
-//       console.log('Private', privateKey);
+const build : (tx : Tx ) => TE.TaskEither<Error,TxComplete> 
+    = (tx) => TE.tryCatch(
+                        () => tx.complete(),
+                        (reason) => new Error(`Error while building Tx : ${reason}`));

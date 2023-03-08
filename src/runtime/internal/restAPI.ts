@@ -252,36 +252,15 @@ export const RestClient = function (request: AxiosInstance): RestClientAPI {
                   , version: input.version
                   }
               , { headers: {
-                'Accept': 'application/vendor.iog.marlowe-runtime.contract-tx-json',
+                // 'Accept': 'application/vendor.iog.marlowe-runtime.contract-tx-json',
                 'Content-Type':'application/json',
                 'X-Address': (input.addresses ?? [input.changeAddress]).join(','),
                 'X-Change-Address': input.changeAddress,
                 ...(input.collateralUTxOs && { 'X-Collateral-UTxOs': input.collateralUTxOs })}})
             ,TE.map((response) => ({ contractId: response.resource.contractId,
                                  endpoint: response.links.contract,
-                                 tx: response.resource.tx
+                                 tx: response.resource.txBody
                                  })))
-        // return tryCatch( request
-        //                   .post(route as string
-        //                       , { contract: input.contract
-        //                         , metadata: input.metadata
-        //                         , minUTxODeposit: input.minUTxODeposit
-        //                         , roles: input.roles
-        //                         , version: input.version
-        //                         }
-        //                       , { headers: {
-        //                             'Accept': 'application/vendor.iog.marlowe-runtime.contract-tx-json',
-        //                             'Content-Type':'application/json',
-        //                             'X-Address': (input.addresses ?? [input.changeAddress]).join(','),
-        //                             'X-Change-Address': input.changeAddress,
-        //                             ...(input.collateralUTxOs && { 'X-Collateral-UTxOs': input.collateralUTxOs })}
-        //                         }).then((response) => 
-        //                             ({
-        //                             contractId: response.data.resource.contractId,
-        //                             endpoint: response.data.links.contract,
-        //                             tx: response.data.resource.tx
-        //                             }))
-        //                , (error) => error.response.data)
     },
     transactions: {
       get: async (
