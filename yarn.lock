@@ -2913,7 +2913,7 @@
   dependencies:
     "yallist" "^4.0.0"
 
-"lucid-cardano@0.9.4":
+"lucid-cardano@^0.9.4":
   "integrity" "sha512-xBpFlPAHi8E112tPhlW99ZNWK8ILHejkYnCBb72st0u5gAPAKcg4jf5YNz5o4A0yoKJuxVbJD1icBX4HBuPhXQ=="
   "resolved" "https://registry.npmjs.org/lucid-cardano/-/lucid-cardano-0.9.4.tgz"
   "version" "0.9.4"

@@ -2,6 +2,7 @@
 /* eslint-disable no-use-before-define */
 import { AxiosInstance } from 'axios';
 import { FetchResult, Metadata, failure, success } from '../model/common';
+import { Contract } from '../../dsl';
 
 // API responses brings us back URLs so we are encouraged to not construct them manually.
 // We use a opaque string to represent URLs for that.
@@ -41,7 +42,6 @@ type Bech32 = string;
 type Version = 'v1';
 
 // Just a stub for Marlowe Contract and State
-type Contract = 'close';
 type State = any;
 type Input = 'input_notify';
 

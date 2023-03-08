@@ -1,9 +1,13 @@
 import { describe, expect, test } from '@jest/globals';
-import { contractsEndpoint, RestClient, RestClientAPI } from '../src/runtime/internal/restAPI';
+import { contractsEndpoint, PostContractsRequest, RestClient, RestClientAPI } from '../src/runtime/internal/restAPI';
 import { FetchResult } from '../src/runtime/model/common';
+import { Close } from '../src/dsl';
 import { Global, Circus } from '@jest/types';
 import { matchI } from 'ts-adt';
 import axios from 'axios';
+import { Blockfrost, Lucid } from 'lucid-cardano';
+import { fromHex, C, Core } from 'lucid-cardano';
+
 
 let testIf = (condition:boolean, name:string, fun:Global.TestFn, timeout?: number) => condition? test(name, fun, timeout):test.skip(name, fun, timeout);
 let describeIf = (condition:boolean, name:string, fun:Circus.BlockFn) => condition? describe(name, fun):describe.skip(name, fun);
@@ -26,6 +30,7 @@ describeIf(typeof baseURL != "undefined", '@marlowe restClientAPI',  () => {
     const client : RestClientAPI = RestClient(axiosRequest);
 
     test("runs", async () => {
+
       let response = await client.contracts.get(contractsEndpoint);
 
       return matchI(response)({
@@ -35,6 +40,27 @@ describeIf(typeof baseURL != "undefined", '@marlowe restClientAPI',  () => {
         failure: (_) => { throw new Error("Contracts endpoint failed:" ); }
       });
     })
+
+    // let tx = "TES";
+    // let x : Core.Transaction = C.Transaction.from_bytes(fromHex(tx));
+
+    test("submit", async () => {
+      let request : PostContractsRequest = {
+        contract: Close,
+        minUTxODeposit: 2000000,
+        changeAddress: "addr_xvk1xadelu2uxz86l0j64fgwfygppdr9p77d7tg0qwwuhgw8qzzhrp3ty47sl6dpplcyrdvjzevywwq9z68z3geceuvtca44pgtsfcakuxgmsl3au",
+      };
+
+      let response = await client.contracts.post(contractsEndpoint, request);
+
+      return matchI(response)({
+        success: (a) => {
+          expect(a.data.itemsWithinCurrentRange.length).toBeGreaterThan(0);
+        },
+        failure: (_) => { throw new Error("Contracts endpoint failed:" ); }
+      });
+
+    });
   });
 //   // Just a temporary quick and dirty tests of the client
 // 
