@@ -62,7 +62,7 @@ export class ContractTxBuilder {
         , collateralUTxOs: collateral
     }
     return pipe( this.restClient.contracts.post(contractsEndpoint,request)
-               , TE.map((postContractsResponse) =>  
+               , TE.map((postContractsResponse) =>
                     [ postContractsResponse.contractId
                     , ACL.contractTxMapper.from(postContractsResponse.tx)]));
   }

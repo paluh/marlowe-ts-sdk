@@ -116,12 +116,15 @@ export interface PostContractsRequest {
   collateralUTxOs?: Bech32[];
 }
 
+export interface PutContractRequest extends Envelope {
+  type: "ShelleyTxWitness BabbageEra" | "Tx BabbageEra"
+}
 
 
 export type RolesConfig 
     = Map<RoleName,RoleTokenConfig> //Mint
-    
-export type RoleName = string;
+
+export type RoleName = string
 
 export type RoleTokenConfig
   = Address // RoleTokenSimple
@@ -135,7 +138,7 @@ export type TokenMetadata
     , files?:TokenMetadataFile[]
   } 
 
-export type TokenMetadataFile 
+export type TokenMetadataFile
   = { name : string
     , src : string
     , mediaType : string
@@ -147,11 +150,14 @@ export interface PostContractsResponse {
   tx: Tx;
 }
 
-export interface Tx {
+export interface Envelope {
   type: string;
   description?: string;
   cborHex: string;
-}
+};
+
+// FIXME: Drop this envelope layer from the API layer
+export type Tx = Envelope;
 
 type ISO8601 = string;
 
@@ -200,7 +206,7 @@ export interface RestClientAPI {
   };
   contract: {
     get: (route: ContractEndpoint) => Promise<FetchResult<ErrorResponse, ContractState>>;
-    put: (contractId: ContractId, input: Tx) => TE.TaskEither<Error,PostContractsResponse>;
+    put: (route: ContractEndpoint, input: PutContractRequest) => TE.TaskEither<Error,PostContractsResponse>;
   };
   transactions: {
     get: (route: TransactionsEndpoint) => Promise<GetTransactionsResponse | ErrorResponse>;
@@ -215,14 +221,12 @@ export const RestClient = function (request: AxiosInstance): RestClientAPI {
           .get(route as string)
           .then((response) => success<ErrorResponse, ContractState>(response.data.resource))
           .catch((error) => failure(error)),
-      put: (contractId: ContractId, input: Tx): TE.TaskEither<Error,any> =>
+      put: (route: ContractEndpoint, input: PutContractRequest): TE.TaskEither<Error,any> =>
           pipe(httpPut(request)
-          ( encodeURI(`contracts/${contractId}`)
+          ( route
           , input
-          , { headers: {
-            // 'Accept': 'application/vendor.iog.marlowe-runtime.contract-tx-json',
-            'Content-Type':'application/json',
-          }}))
+          , { headers: { 'Content-Type':'application/json' }}
+          ))
     },
     contracts: {
       get: async (
@@ -255,14 +259,14 @@ export const RestClient = function (request: AxiosInstance): RestClientAPI {
                   , version: input.version
                   }
               , { headers: {
-                // 'Accept': 'application/vendor.iog.marlowe-runtime.contract-tx-json',
+                'Accept': 'application/vendor.iog.marlowe-runtime.contract-tx-json',
                 'Content-Type':'application/json',
                 'X-Address': (input.addresses ?? [input.changeAddress]).join(','),
                 'X-Change-Address': input.changeAddress,
                 ...(input.collateralUTxOs && { 'X-Collateral-UTxOs': input.collateralUTxOs })}})
             ,TE.map((response) => ({ contractId: response.resource.contractId,
                                  endpoint: response.links.contract,
-                                 tx: response.resource.txBody
+                                 tx: response.resource.tx
                                  })))
     },
     transactions: {
