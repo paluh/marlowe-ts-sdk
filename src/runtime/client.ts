@@ -67,6 +67,9 @@ export class ContractTxBuilder {
                     , ACL.contractTxMapper.from(postContractsResponse.tx)]));
   }
 
+  public submit (contractId : ContractId, txSigned: string) : TE.TaskEither<Error,any>  {
+    return this.restClient.contract.put(contractId,{type:"ShelleyTxWitness BabbageEra", description:"",cborHex:txSigned})
+  }
 }
 
 // contract: {

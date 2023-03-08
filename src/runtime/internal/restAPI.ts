@@ -200,7 +200,7 @@ export interface RestClientAPI {
   };
   contract: {
     get: (route: ContractEndpoint) => Promise<FetchResult<ErrorResponse, ContractState>>;
-    put: (route: ContractEndpoint, input: Tx) => Promise<TransactionsEndpoint | ErrorResponse>;
+    put: (contractId: ContractId, input: Tx) => TE.TaskEither<Error,PostContractsResponse>;
   };
   transactions: {
     get: (route: TransactionsEndpoint) => Promise<GetTransactionsResponse | ErrorResponse>;
@@ -215,11 +215,14 @@ export const RestClient = function (request: AxiosInstance): RestClientAPI {
           .get(route as string)
           .then((response) => success<ErrorResponse, ContractState>(response.data.resource))
           .catch((error) => failure(error)),
-      put: async (route: ContractEndpoint, input: Tx): Promise<TransactionsEndpoint | ErrorResponse> =>
-        request
-          .post(route as string, input)
-          .then((response) => response.data.links.transactions)
-          .catch((error) => (error.response.data))
+      put: (contractId: ContractId, input: Tx): TE.TaskEither<Error,any> =>
+          pipe(httpPut(request)
+          ( encodeURI(`contracts/${contractId}`)
+          , input
+          , { headers: {
+            // 'Accept': 'application/vendor.iog.marlowe-runtime.contract-tx-json',
+            'Content-Type':'application/json',
+          }}))
     },
     contracts: {
       get: async (
@@ -291,3 +294,5 @@ const makeReq = TE.bimap(
 export const httpGet = flow(TE.tryCatchK(axios.get, identity), makeReq);
 
 export const httpPost  = (request: AxiosInstance) => flow(TE.tryCatchK(request.post, identity), makeReq);
+
+export const httpPut  = (request: AxiosInstance) => flow(TE.tryCatchK(request.put, identity), makeReq);

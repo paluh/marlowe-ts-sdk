@@ -1,7 +1,7 @@
 import { pipe } from 'fp-ts/function';
 import * as A from 'fp-ts/Array';
 import * as API from '@blockfrost/blockfrost-js'
-import { Blockfrost, Lucid, C, Network, PrivateKey, PolicyId, getAddressDetails, toUnit, fromText, NativeScript, Tx, Transaction, TxSigned, TxComplete, Script } from 'lucid-cardano';
+import { Blockfrost, Lucid, C, Network, PrivateKey, PolicyId, getAddressDetails, toUnit, fromText, NativeScript, Tx , Msg ,Core, TxSigned, TxComplete, Script } from 'lucid-cardano';
 import * as O from 'fp-ts/Option'
 import { matchI } from 'ts-adt';
 import getUnixTime from 'date-fns/getUnixTime';
@@ -77,17 +77,18 @@ export class SingleAddressAccount {
                      
     }
     
-    public async tokenBalance (asset:Asset) { 
-        const content = await this.blockfrostApi.addresses(this.address);
-        const unit = toUnit(asset.policyId, fromText(asset.tokenName));
-        return pipe( content.amount??[]
-            , A.filter((amount) => amount.unit === unit)
-            , A.map((amount) => BigInt(amount.quantity))
-            , A.head
-            , O.getOrElse(() => 0n));
+    public tokenBalance : (asset:Asset) => TE.TaskEither<Error,bigint> 
+        = (asset) => 
+            pipe(TE.tryCatch(
+                        () => this.blockfrostApi.addresses(this.address),
+                        (reason) => new Error(`Error while signing : ${reason}`))
+                , TE.map( (content) => pipe(content.amount??[]
+                                            , A.filter((amount) => amount.unit === toUnit(asset.policyId, fromText(asset.tokenName)))
+                                            , A.map((amount) => BigInt(amount.quantity))
+                                            , A.head
+                                            , O.getOrElse(() => 0n))))
                      
-    }
-
+    
     public provision : (provisionning: Map<SingleAddressAccount,BigInt>) => TE.TaskEither<Error,Boolean> = (provisionning) => 
         pipe ( Array.from(provisionning.entries())
                     , A.reduce ( this.lucid.newTx()
@@ -127,8 +128,10 @@ export class SingleAddressAccount {
                    )
     }
 
-    public fromTxCBOR (cbor : string) : TxComplete {
-        return this.lucid.fromTx(cbor)
+    public fromTxBodyCBOR (cbor : string) : TxComplete {
+        return new TxComplete (this.lucid,Core.Transaction.new( Core.TransactionBody.from_bytes (Buffer.from(cbor, 'hex'))
+                                                              , Core.TransactionWitnessSet.new()
+                                                            , undefined))
     } 
 
     public sign : (txBuilt : TxComplete ) => TE.TaskEither<Error,TxSigned> 
@@ -137,7 +140,13 @@ export class SingleAddressAccount {
                     () => txBuilt.sign().complete(),
                     (reason) => new Error(`Error while signing : ${reason}`));
     
-        
+    public signTxBody : (txBody : TxComplete) => TE.TaskEither<Error,TxSigned> 
+        =  (txBuilt) => 
+                TE.tryCatch(
+                    () => txBuilt.signWithPrivateKey(this.privateKeyBech32).complete(),
+                    (reason) => new Error(`Error while signing : ${reason}`));
+
+
     public submit : (signedTx : TxSigned ) => TE.TaskEither<Error,string> 
         = (signedTx) => 
             TE.tryCatch(

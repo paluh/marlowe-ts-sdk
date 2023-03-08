@@ -3,7 +3,7 @@ import * as ADA from '../src/common/ada'
 import { datetoTimeout } from '../src/common/date'
 import { Configuration, getPrivateKeyFromHexString, SingleAddressAccount, Asset} from '../src/common/blockfrost'
 import { some, none, getOrElse, throwError } from 'fp-ts/Option'
-import { pipe } from 'fp-ts/function'
+import { constVoid, pipe } from 'fp-ts/function'
 import * as DSL from '../src/dsl';
 import * as Examples from '../src/examples';
 import { addDays, addHours,addMinutes } from 'date-fns/fp'
@@ -15,8 +15,9 @@ import { log } from '../src/common/logging'
 import { Address, RoleName, rolesConfiguration } from '../src/runtime/model/common'
 import JSONbigint from 'json-bigint'
 import * as TE from 'fp-ts/TaskEither'
-import { either } from 'fp-ts'
-import { Transaction } from 'lucid-cardano/types/src/core/wasm_modules/cardano_multiplatform_lib_web/cardano_multiplatform_lib'
+import * as T from 'fp-ts/Task'
+import * as E from 'fp-ts/Either'
+
 
 describe('swap', () => {
   it('can execute the nominal case', async () => {
@@ -49,21 +50,20 @@ describe('swap', () => {
                                                                 [tokenProviderAccount,expectdAmountProvisionnedforTokenProvider]])) ();
 
     await adaProviderAccount.adaBalance().then ((amount) => {
-      log(`Ada Provider Address :', ${adaProviderAccount.address}`);
+      log(`Ada Provider Address : ${adaProviderAccount.address}`);
       log(`Balance: ${ADA.format(amount)}`);
       expect(amount).toBe(expectdAmountProvisionnedforAdaProvider);
     })
 
     await tokenProviderAccount.adaBalance().then ((amount) => {
-      log(`Token Provider Address:', ${tokenProviderAccount.address}`);
+      log(`Token Provider Address: ${tokenProviderAccount.address}`);
       log(`Balance: ${ADA.format(amount)}`);
       expect(amount).toBe(expectdAmountProvisionnedforTokenProvider);
     }); 
     const policyRefs = tokenProviderAccount.randomPolicyId ();
     const asset = new Asset (policyRefs[1],tokenName)
     await (tokenProviderAccount.mintTokens(policyRefs,tokenName,expectedTokenAmount)) ()
-    await delay(10_000);
-    const tokenAmount = await tokenProviderAccount.tokenBalance(asset)
+    const tokenAmount = await awaitTillTrue (pipe(tokenProviderAccount.tokenBalance(asset),TE.getOrElse ( () => T.of(0n))), (a) => a == expectedTokenAmount,3000) ()
     log(`Token Balance: ${tokenAmount}`);
     expect(tokenAmount).toBe(expectedTokenAmount);
     
@@ -87,18 +87,33 @@ describe('swap', () => {
                                   ([['Ada provider', adaProviderAccount.address]  
                                   ,['Token provider', tokenProviderAccount.address]]) 
                               , adaProviderAccount.address)
-    const contractId = await (pipe (createTx 
-                           , TE.chain(([contractId,tx]) => pipe ( adaProviderAccount.fromTxCBOR(tx.cborHex)
-                                                                , adaProviderAccount.signSubmitAndWaitConfirmation
-                                                                , TE.map((b) => contractId))
-                                      )))()
+    const result = await (pipe (createTx 
+                                   , TE.chain(([contractId,txBody]) => pipe ( adaProviderAccount.fromTxBodyCBOR(txBody.cborHex)
+                                                                        , adaProviderAccount.signTxBody
+                                                                        , TE.map((txSigned) => [contractId,txSigned.toString()])))
+                                   , TE.chain(([contractId,txSigned]) => txBuilder.submit(contractId,txSigned) )))()
                     
-    log (`contract id submitted ${JSONbigint.stringify(contractId)}`);
+    log (`contract id submitted ${JSONbigint.stringify(result)}`);
     
   },1000_000); 
 });
 
-
 function delay(ms: number) {
   return new Promise( resolve => setTimeout(resolve, ms) );
 }
+
+const awaitTillTrue: <A> (f : T.Task<A>, predicate : (a:A) => boolean,  checkInterval :number) => T.Task<A> 
+  = (f,predicate,checkInterval) =>
+       () => new Promise((res) => {
+              const confirmation = setInterval(async () => {
+                const result =  await f()
+                if (predicate(result)) {
+                  clearInterval(confirmation);
+                  res(result);
+                  return;
+                }                   
+              }, checkInterval);
+            })
+      
+  
+
