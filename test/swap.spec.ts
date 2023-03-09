@@ -1,6 +1,6 @@
 
 import * as ADA from '../src/common/ada'
-import axios from 'axios';
+import axios, { AxiosError, isAxiosError } from 'axios';
 import { Circus } from '@jest/types';
 import { datetoTimeout } from '../src/common/date'
 import { Configuration, getPrivateKeyFromHexString, SingleAddressAccount, Asset} from '../src/common/blockfrost'
@@ -54,7 +54,6 @@ describeIf(typeof baseURL != "undefined" && typeof blockfrostProjectID != "undef
       minUTxODeposit: 2000000,
       changeAddress: "addr_test1vq0acgkfkgeeuezdy2fn2y5mxhn9zcvrjesxxen4k2d2t2qdwp3ce",
       version: 'v1',
-      //metadata: new Map(),
       metadata: new Map([[1985n , "test"]])
     };
     let result = await (pipe(
@@ -90,24 +89,100 @@ describeIf(typeof baseURL != "undefined" && typeof blockfrostProjectID != "undef
             // This throws if cbor is invalid
             let tx = C.Transaction.from_bytes(fromHex(postContractsResponse.tx.cborHex));
             let txWitness = lucid.wallet.signTx(tx);
-            return TE.tryCatch(() => txWitness.then((w) => { return { witnessSet: w, endpoint: postContractsResponse.endpoint};}), E.toError);
+            return TE.tryCatch(() => txWitness.then((w) => {
+              // We can free allocated tx after we have witness set
+              tx.free();
+              return { witnessSet: w, endpoint: postContractsResponse.endpoint};
+            }), E.toError);
         })
         , TE.chain(({ witnessSet, endpoint }) => {
-          console.log(witnessSet.to_json());
+          let witnessSetCborHex = toHex(witnessSet.to_bytes());
+          witnessSet.free();
+
           let envelope: PutContractRequest = {
             "type": "ShelleyTxWitness BabbageEra",
             "description": "",
-            "cborHex": toHex(witnessSet.to_bytes())
+            "cborHex": witnessSetCborHex
           };
-          console.log(witnessSet.to_bytes());
           return client.contract.put(endpoint, envelope);
         })
     )());
     pipe(result, E.match(
-      (e) => { console.log(e); },
-      (res) => { console.log(res); }
+      (e: Error | AxiosError) => {
+        if(isAxiosError(e)) {
+          throw new Error("API failure: status = " + e.response?.status + ", message = " + JSON.stringify(e.response?.data));
+        } else {
+          throw new Error("API failure: message = " + e.message);
+        }
+      },
+      (_) => { }
     ));
   });
+
+  test("contracts.put accepts transaction", async () => {
+    let blockfrostProvider = new Blockfrost("https://cardano-preview.blockfrost.io/api/v0", blockfrostProjectID)
+    let lucid = await Lucid.new(blockfrostProvider, "Preview");
+    lucid.selectWalletFromSeed(mnemonicPhrase as string);
+
+    let address = await lucid.wallet.address();
+
+    let request : PostContractsRequest = {
+      contract: Close,
+      minUTxODeposit: 2000000,
+      changeAddress: address,
+      version: 'v1',
+      //metadata: new Map(),
+      metadata: new Map([[1985n , "test"]])
+    };
+    let result = await (pipe(
+        client.contracts.post(contractsEndpoint, request)
+        , TE.chain((postContractsResponse) => {
+            // This throws if cbor is invalid
+            let tx = C.Transaction.from_bytes(fromHex(postContractsResponse.tx.cborHex));
+            let mkWitnessSet = lucid.wallet.signTx(tx);
+
+            return TE.tryCatch(() => mkWitnessSet.then((newWitnessSet) => { return { newWitnessSet, tx, endpoint: postContractsResponse.endpoint };}), E.toError);
+        })
+        , TE.chain(({ newWitnessSet, endpoint, tx }) => {
+          let txWitnessSetBuilder = C.TransactionWitnessSetBuilder.new();
+          let oldWitnessSet = tx.witness_set();
+          txWitnessSetBuilder.add_existing(oldWitnessSet);
+          txWitnessSetBuilder.add_existing(newWitnessSet);
+
+          let fullWitnessSet = txWitnessSetBuilder.build();
+          let txBody = tx.body();
+          let auxiliaryData = tx.auxiliary_data();
+          let signedTransaction = C.Transaction.new(txBody, fullWitnessSet, auxiliaryData);
+          let txCborHex = toHex(signedTransaction.to_bytes());
+          let envelope: PutContractRequest = {
+            "type": "Tx BabbageEra",
+            "description": "",
+            "cborHex": txCborHex
+          };
+
+          newWitnessSet.free();
+          oldWitnessSet.free();
+          txWitnessSetBuilder.free();
+          fullWitnessSet.free();
+          txBody.free();
+          auxiliaryData?.free();
+          signedTransaction.free();
+
+          return client.contract.put(endpoint, envelope);
+        })
+    )());
+    pipe(result, E.match(
+      (e: Error | AxiosError) => {
+        if(isAxiosError(e)) {
+          throw new Error("API failure: status = " + e.response?.status + ", message = " + JSON.stringify(e.response?.data));
+        } else {
+          throw new Error("API failure: message = " + e.message);
+        }
+      },
+      (_) => { }
+    ));
+  });
+
 });
 
 

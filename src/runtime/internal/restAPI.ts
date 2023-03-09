@@ -48,8 +48,6 @@ export type Version = 'v1';
 type State = any;
 type Input = 'input_notify';
 
-// Currently the runtime API doesn't provide any additional information
-// beside the error status code like 400, 404, 500 etc.
 export interface ErrorResponse {
   details: string;
   errorCode:string;
@@ -288,7 +286,6 @@ export const RestClient = function (request: AxiosInstance): RestClientAPI {
     }
   };
 };
-
 
 const makeReq = TE.bimap(
   (e: unknown) => (e instanceof Error ? e : new Error(String(e))),
